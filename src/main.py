@@ -56,19 +56,21 @@ def work_filter(row, report_date):
 
 def get_dates(df: pd.DataFrame) -> list:
     year = datetime.datetime.now().year
-    return list(
-        set(
-            [
-                row["Datum"]
-                for _, row in df.iterrows()
-                if datetime.datetime.strptime(row["Datum"], "%Y-%m-%d").year == year
-                and "SJÖSÄTTNING" in row["Schema"].upper()
-            ]
+    return sorted(
+        list(
+            set(
+                [
+                    row["Datum"]
+                    for _, row in df.iterrows()
+                    if datetime.datetime.strptime(row["Datum"], "%Y-%m-%d").year == year
+                    and "SJÖSÄTTNING" in row["Schema"].upper()
+                ]
+            )
         )
     )
 
 
-def make_report(date: str, df: pd.DataFrame, outdir: str, template: str):
+def make_report(date: str, df: pd.DataFrame, filename: str, template: str):
     print(f"Generating report for {date}")
 
     # Read the Excel file
@@ -149,16 +151,37 @@ def make_report(date: str, df: pd.DataFrame, outdir: str, template: str):
     )
 
     # Save the workbook
-    filename = os.path.join(outdir, "Förarschema ESS " + date + ".xlsx")
-    if not os.path.exists(os.path.dirname(filename)):
-        os.makedirs(os.path.dirname(filename))
     wb.save(filename)
-    print(f"\tSjösättningar: {len(boatrows)}")
-    print(f"\tArbetspass: {len(work_rows)}")
+    print(f"\tSjösättningar: {len(boatrows)} Arbetspass: {len(work_rows)}")
     print(f"Report written to '{filename}'")
 
 
-df = pd.read_excel(args.file)
+def get_filename(path: str) -> str:
+    if os.path.isfile(path):
+        return path
+    d = args.file
+    # Get the files in the directory, and return the newest. All files should match *.xlsx
+    files = [
+        os.path.join(d, f)
+        for f in os.listdir(d)
+        if os.path.isfile(os.path.join(d, f)) and f.endswith(".xlsx")
+    ]
+    # Get the newest file
+    return max(files, key=os.path.getmtime)
+
+
+filename = get_filename(args.file)
+print(f"Reading file '{filename}'")
+df = pd.read_excel(filename)
 dates = get_dates(df)
+if not os.path.exists(args.outdir):
+    os.makedirs(args.outdir)
 for d in dates:
-    make_report(d, df, args.outdir, template=args.template)
+    filename = os.path.join(args.outdir, "Förarschema ESS " + d + ".xlsx")
+    if datetime.datetime.strptime(d, "%Y-%m-%d") >= datetime.datetime.now():
+        make_report(d, df, filename, template=args.template)
+    else:
+        # Delete the file if it exists
+        if os.path.exists(filename):
+            os.remove(filename)
+        print(f"**\n** Skipping date {d}\n**")
