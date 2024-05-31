@@ -156,7 +156,7 @@ def make_report(date: str, df: pd.DataFrame, filename: str, template: str):
     print(f"Report written to '{filename}'")
 
 
-def get_filename(path: str) -> str:
+def get_report_filename(path: str) -> str:
     if os.path.isfile(path):
         return path
     d = args.file
@@ -170,21 +170,26 @@ def get_filename(path: str) -> str:
     return max(files, key=os.path.getmtime)
 
 
-filename = get_filename(args.file)
-print(f"Reading file '{filename}'")
-df = pd.read_excel(filename)
+def make_output_filename(outdir: str, date: str) -> str:
+    return os.path.join(outdir, f"Förarschema ESS {date}.xlsx")
+
+
+report_filename = get_report_filename(args.file)
+print(f"Reading file '{report_filename}'")
+df = pd.read_excel(report_filename)
 dates = get_dates(df)
 if not os.path.exists(args.outdir):
     os.makedirs(args.outdir)
 for d in dates:
-    filename = os.path.join(args.outdir, f"Förarschema ESS {d}.xlsx")
+    output_filename = make_output_filename(args.outdir, d)
+
     if (
         datetime.datetime.strptime(d, "%Y-%m-%d").date()
         >= datetime.datetime.today().date()
     ):
-        make_report(d, df, filename, template=args.template)
+        make_report(d, df, output_filename, template=args.template)
     else:
         # Delete the file if it exists
-        if os.path.exists(filename):
-            os.remove(filename)
+        if os.path.exists(output_filename):
+            os.remove(output_filename)
         print(f"**\n** Skipping passed date {d}\n**")
