@@ -177,11 +177,14 @@ dates = get_dates(df)
 if not os.path.exists(args.outdir):
     os.makedirs(args.outdir)
 for d in dates:
-    filename = os.path.join(args.outdir, "Förarschema ESS " + d + ".xlsx")
-    if datetime.datetime.strptime(d, "%Y-%m-%d") >= datetime.datetime.now():
+    filename = os.path.join(args.outdir, f"Förarschema ESS {d}.xlsx")
+    if (
+        datetime.datetime.strptime(d, "%Y-%m-%d").date()
+        >= datetime.datetime.today().date()
+    ):
         make_report(d, df, filename, template=args.template)
     else:
         # Delete the file if it exists
         if os.path.exists(filename):
             os.remove(filename)
-        print(f"**\n** Skipping date {d}\n**")
+        print(f"**\n** Skipping passed date {d}\n**")
