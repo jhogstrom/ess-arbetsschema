@@ -3,3 +3,5 @@ stage
 .env
 report
 .vs
+templates/varvskarta.pptx
+boatinfo
