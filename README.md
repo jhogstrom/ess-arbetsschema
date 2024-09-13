@@ -11,6 +11,28 @@ dag definierad som sjösättningsdag, såväl arbetspass som sjösättningar
 Rapporten innehåller en del custom fields specifika för min båtklubb,
 och har hårdkodade kolumnnamn. Det skulle gå att generalisera detta om nån är intresserad.
 
+# Templates
+
+Några filer skall ligga i templates-biblioteket. Det gäller
+* en excelfil för schema-generering
+* En varvskarta (pptx)
+* Valfritt en fil med färgkoder.
+
+## Färkgoder
+Med filen `templates/colors.json` är det möjligt att definiera ett eget färgschema för kartan. Filen måste vara en giltig jsonfil, och skall ha följande format:
+
+```json
+{
+    "reserved": [214, 245, 214],
+    "declined": [255, 230, 230],
+    "member_left": [255, 153, 255],
+    "on_land": [230, 230, 255],
+    "unknown": [255, 255, 255]
+}
+```
+
+Nycklar utöver dessa kommer inte att beaktas.
+
 
 # Filformat
 ## ex-members (`--exmembers`)

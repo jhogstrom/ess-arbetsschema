@@ -28,19 +28,28 @@ FILL_COLOR_NOSPOT = RGBColor(255, 230, 230)
 FILL_COLOR_ON_LAND = RGBColor(230, 230, 255)
 FILL_COLOR_MEMBER_LEFT = RGBColor(255, 153, 255)
 
-colors = {
-    "reserved": RGBColor(214, 245, 214),
-    "declined": RGBColor(255, 230, 230),
-    "member_left": RGBColor(255, 153, 255),
-    "on_land": RGBColor(230, 230, 255),
-    "unknown": RGBColor(255, 255, 255),
-}
 
-if os.path.exists("templates/colors.json"):
-    with open("templates/colors.json") as f:
-        user_colors = json.load(f)
-    for key, value in user_colors.items():
-        colors[key] = RGBColor(*value)
+def define_colors(filename: Optional[str]) -> Dict[str, RGBColor]:
+    result = {
+        "reserved": RGBColor(214, 245, 214),
+        "declined": RGBColor(255, 230, 230),
+        "member_left": RGBColor(255, 153, 255),
+        "on_land": RGBColor(230, 230, 255),
+        "unknown": RGBColor(255, 255, 255),
+    }
+
+    if filename and os.path.exists(filename):
+        try:
+            with open(filename) as f:
+                user_colors = json.load(f)
+            try:
+                for key, value in user_colors.items():
+                    result[key] = RGBColor(*value)
+            except ValueError:
+                logger.error(f"Could not read colors from file {filename}")
+        except json.JSONDecodeError:
+            logger.error(f"Could not read colors from file {filename}")
+    return result
 
 
 def parseargs():
@@ -479,6 +488,7 @@ def update_legend(slide, colors):
 
 if __name__ == "__main__":
     args = parseargs()
+    colors = define_colors("templates/colors.json")
 
     ex_members = member_left_club(make_filename(args.exmembers, dirs=["boatinfo"]))
     already_there = members_on_land(make_filename(args.onland, dirs=["boatinfo"]))
