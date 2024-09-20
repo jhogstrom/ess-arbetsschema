@@ -1,27 +1,19 @@
 import argparse
 import datetime
-import glob
 import json
-import logging
 import math
 import os
 import re
 from typing import Any, Dict, Hashable, List, Optional
 
 import pandas as pd
-from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.slide import Slide
 from pptx.util import Cm, Inches, Pt
 
-logger = logging.getLogger("spaceplan")
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter("%(name)s: %(asctime)s - %(levelname)s - %(message)s")
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+from helpers import FileHelper, color_boats, get_shape, setup_logger
 
 FILL_COLOR = RGBColor(214, 245, 214)
 FILL_COLOR_NOSPOT = RGBColor(255, 230, 230)
@@ -89,52 +81,6 @@ def parseargs():
         help="Excel file with members already on land",
     )
     return parser.parse_args()
-
-
-def make_filename(filename: str, *, dirs: Optional[List[str]] = None) -> str:
-    if not filename:
-        raise ValueError("No filename provided")
-    if os.path.exists(filename):
-        logger.debug(f"File {filename} => {filename}")
-        return filename
-    dirs = [] or dirs
-    for d in dirs:
-        f = os.path.join(d, filename)
-        if os.path.exists(f):
-            logger.debug(f"File {filename} => {f}")
-            return f
-
-    matches = []
-    for d in dirs:
-        logger.debug(f"Searching for {filename} in {os.path.join(d, filename)}")
-        matches.extend(glob.glob(os.path.join(d, filename)))
-    if not matches:
-        raise FileNotFoundError(
-            f"File {filename} not found in {dirs} using pattern {filename}"
-        )
-    result = max([_ for _ in matches if "~" not in _], key=os.path.getmtime)
-    logger.debug(f"File {filename} => {result}")
-    return result
-
-
-def read_pptx_file(filename: str) -> Presentation:
-    """
-    Read the PowerPoint file and return the Presentation object.
-
-    Args:
-        filename (str): Filename of the PowerPoint file to read
-
-    Raises:
-        ValueError: Raised if no filename is provided
-        FileNotFoundError: Raised if the file is not found
-
-    Returns:
-        Presentation: PowerPoint Presentation object
-    """
-    logger.info(f"Reading file {filename}")
-
-    # Open the PowerPoint file and return it
-    return Presentation(filename)
 
 
 def make_items_integer(thelist: list) -> List[int]:
@@ -280,35 +226,6 @@ def get_boats(
     return result
 
 
-def make_shape_name(member_id: int) -> str:
-    return f"Member: {member_id}"
-
-
-def get_shape(slide, shape_name: str):
-    """
-    Get the shape by member id or member name by looking at
-    the text in the shape. If the id or name is in the text,
-    return the shape.
-
-    Args:
-        slide: Slide in pptx
-        member_id (str): Member id to search for
-
-    Returns:
-        Shape: Shape, if found by member id or member name, otherwise None
-    """
-    for shape in slide.shapes:
-        if shape.name == shape_name:
-            logger.debug(f"Found shape '{shape_name}'.")
-            return shape
-    for shape in slide.shapes:
-        if any(_ in shape.text for _ in shape_name.split()):
-            logger.debug(f"Found shape {shape.name} matching {shape_name}")
-            return shape
-    logger.warning(f"Did not find shape with name '{shape_name}'")
-    return None
-
-
 def set_shape_text(shape, text: str) -> None:
     """
     Set the text of the shape to the text provided and format it.
@@ -340,18 +257,6 @@ def set_shape_text(shape, text: str) -> None:
     text_frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
 
 
-def color_boats(slide, members: List[int], color: RGBColor, logmsg: str):
-    for member in members:
-        shape = get_shape(slide, make_shape_name(member))
-        if shape:
-            shape.fill.fore_color.rgb = color
-            text = shape.text.replace("\n", "--")
-            logger.info(f"Member {member} ('{text}') {logmsg}")
-            shape.name = f"Member: {member}"
-        else:
-            logger.warning(f"Member {member} {logmsg}, but not found on map")
-
-
 def format_shape(shape, fill_color: RGBColor) -> None:
     """
     Format the shape with the fill color provided.
@@ -381,7 +286,7 @@ def ensured_shape(slide, shape_name: str, boat: Dict[str, Any]):
     left = Pt(1)
     top = Pt(1)
 
-    shape = get_shape(slide, shape_name)
+    shape = get_shape(slide, shape_name, logger)
     if not shape:
         width = Pt(boat["length"] * SCALE_WIDTH)
         length = Pt(boat["width"] * SCALE_LENGTH)
@@ -417,13 +322,13 @@ def add_boats_to_map(
         NAME_ONLY = "{member} {name}"  # noqa: F841
         SIZE_ONLY = "{member} {length:.1f}x{width:.1f}"  # noqa: F841
         FULL = "{member} {name}\n{length:.1f}x{width:.1f}"  # noqa: F841
-        caption = FULL.format(**expansions)
+        caption = NAME_ONLY.format(**expansions)
 
         set_shape_text(shape, caption)
     logger.info(f"Spots count: {counts[True]}")
     logger.info(f"Yield count: {counts[False]}")
-    color_boats(slide, ex_members, colors["member_left"], "has left the club")
-    color_boats(slide, already_there, colors["on_land"], "is already on land")
+    color_boats(slide, ex_members, colors["member_left"], "has left the club", logger)
+    color_boats(slide, already_there, colors["on_land"], "is already on land", logger)
 
     for s in slide.shapes:
         if "Rectangle" in s.name:
@@ -445,7 +350,7 @@ def remove_shape_by_name(slide, shape_name: str) -> bool:
     Returns:
         bool: True if shape removed, otherwise False
     """
-    shape = get_shape(slide, shape_name)
+    shape = get_shape(slide, shape_name, logger)
     if shape:
         sp = shape.element
         sp.getparent().remove(sp)
@@ -478,7 +383,7 @@ def update_legend(slide, colors):
     """
     for key, color in colors.items():
         shape_name = f"Legend: {key}"
-        shape = get_shape(slide, shape_name)
+        shape = get_shape(slide, shape_name, logger)
         if not shape:
             logger.warning(f"Could not find shape '{shape_name}'")
         else:
@@ -489,15 +394,17 @@ def update_legend(slide, colors):
 if __name__ == "__main__":
     args = parseargs()
     colors = define_colors("templates/colors.json")
+    logger = setup_logger("spots", "INFO")
+    fh = FileHelper(logger)
 
-    ex_members = member_left_club(make_filename(args.exmembers, dirs=["boatinfo"]))
-    already_there = members_on_land(make_filename(args.onland, dirs=["boatinfo"]))
-    all_requests = get_requests(make_filename(args.requests, dirs=["boatinfo"]))
+    ex_members = member_left_club(fh.make_filename(args.exmembers, dirs=["boatinfo"]))
+    already_there = members_on_land(fh.make_filename(args.onland, dirs=["boatinfo"]))
+    all_requests = get_requests(fh.make_filename(args.requests, dirs=["boatinfo"]))
     no_spot_requested = get_no_spot_requested(
-        make_filename(args.requests, dirs=["boatinfo"])
+        fh.make_filename(args.requests, dirs=["boatinfo"])
     )
-    members = read_members(make_filename(args.members, dirs=["boatinfo"]))
-    scheduled = get_scheduled(make_filename(args.scheduled, dirs=["boatinfo"]))
+    members = read_members(fh.make_filename(args.members, dirs=["boatinfo"]))
+    scheduled = get_scheduled(fh.make_filename(args.scheduled, dirs=["boatinfo"]))
     boats = get_boats(
         members=members,
         already_there=already_there,
@@ -506,16 +413,17 @@ if __name__ == "__main__":
         all_requests=all_requests,
     )
 
-    ppt = read_pptx_file(make_filename(args.file, dirs=["templates"]))
+    ppt = fh.read_pptx_file(fh.make_filename(args.file, dirs=["templates"]))
     map_slide = ppt.slides[0]
     add_boats_to_map(
         slide=map_slide, boats=boats, ex_members=ex_members, already_there=already_there
     )
-    update_revision(get_shape(map_slide, "Revision"), revision="1", boats=boats)
+    update_revision(get_shape(map_slide, "Revision", logger), revision="1", boats=boats)
     update_legend(map_slide, colors)
     try:
         ppt.save(args.outfile)
+        logger.info(f"Saved file '{args.outfile}'")
     except PermissionError:
-        logger.error(f"Could not save file {args.outfile}")
+        logger.error(f"Could not save file '{args.outfile}'")
         logger.error("File is open in another application")
         exit(1)

@@ -35,7 +35,7 @@ Nycklar utöver dessa kommer inte att beaktas.
 
 
 # Filformat
-## ex-members (`--exmembers`)
+## ex-members (`--exmembers`) (platsplanering)
 
 Default: `boatinfo/ex-members.txt`
 
@@ -50,7 +50,7 @@ Exempel:
 25
 ```
 
-## sommarliggare (`--onland`)
+## sommarliggare (`--onland`) (platsplanering)
 
 Default: `boatinfo/sommarliggare.xlsx`
 
@@ -62,7 +62,7 @@ Excelfil med följande kolumner:
 
 Syftet är att kunna markera de båtar som inte sjösatts denna sommar.
 
-## Schemalagda (`--scheduled`)
+## Schemalagda (`--scheduled`) (platsplanering)
 
 Default: `boatinfo/torrsättning*.xlsx`
 
@@ -75,7 +75,7 @@ Denna rapport kan med fördel genereras och laddas ner från BAS.
 
 Syftet är att fånga de medlemmar som anmält torrsättning, men inte fyllt i formuläret.
 
-## Medlemmar (`--members`)
+## Medlemmar (`--members`) (platsplanering)
 
 Default: `boatinfo/Alla_medlemmar_inkl_båtinfo_*.xlsx`
 
@@ -88,3 +88,18 @@ Excelfil med följande kolumner:
 * Plats
 
 Denna rapport kan med fördel genereras och laddas ner från BAS.
+
+## Schema (`--file`) (schemagenerering - main.py)
+Excelfil med följande kolumner:
+* Schema
+* Datum
+* Pass tid
+* Kommentar medlem
+* Medlemsnr
+* Mobil
+* Medlem (fullt namn)
+* Modell
+* inställningESK
+* inställningDUSK
+* InställningDUSK2
+* Plats
