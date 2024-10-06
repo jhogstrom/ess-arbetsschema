@@ -80,6 +80,7 @@ def parseargs():
         default="boatinfo/torrsättning.xlsx",
         help="Excel file with members already on land",
     )
+    parser.add_argument("--updateboat", required=False, help="Update boat information")
     return parser.parse_args()
 
 
@@ -292,6 +293,9 @@ def ensured_shape(slide, shape_name: str, boat: Dict[str, Any]):
         length = Pt(boat["width"] * SCALE_LENGTH)
 
         shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, length)
+    else:
+        shape.width = Pt(boat["length"] * SCALE_WIDTH)
+        shape.height = Pt(boat["width"] * SCALE_LENGTH)
     shape.name = shape_name
     return shape
 
@@ -397,14 +401,25 @@ if __name__ == "__main__":
     logger = setup_logger("spots", "INFO")
     fh = FileHelper(logger)
 
-    ex_members = member_left_club(fh.make_filename(args.exmembers, dirs=["boatinfo"]))
-    already_there = members_on_land(fh.make_filename(args.onland, dirs=["boatinfo"]))
     all_requests = get_requests(fh.make_filename(args.requests, dirs=["boatinfo"]))
-    no_spot_requested = get_no_spot_requested(
-        fh.make_filename(args.requests, dirs=["boatinfo"])
-    )
     members = read_members(fh.make_filename(args.members, dirs=["boatinfo"]))
-    scheduled = get_scheduled(fh.make_filename(args.scheduled, dirs=["boatinfo"]))
+    if args.updateboat:
+        scheduled = [int(args.updateboat)]
+        no_spot_requested = []
+        already_there = []
+        ex_members = []
+    else:
+        ex_members = member_left_club(
+            fh.make_filename(args.exmembers, dirs=["boatinfo"])
+        )
+        already_there = members_on_land(
+            fh.make_filename(args.onland, dirs=["boatinfo"])
+        )
+        scheduled = get_scheduled(fh.make_filename(args.scheduled, dirs=["boatinfo"]))
+        no_spot_requested = get_no_spot_requested(
+            fh.make_filename(args.requests, dirs=["boatinfo"])
+        )
+
     boats = get_boats(
         members=members,
         already_there=already_there,
@@ -412,6 +427,9 @@ if __name__ == "__main__":
         no_spot_requested=no_spot_requested,
         all_requests=all_requests,
     )
+    if args.updateboat:
+        logger.info(f"Filtering boats on {args.updateboat}")
+        boats = [b for b in boats if b["member"] == int(args.updateboat)]
 
     ppt = fh.read_pptx_file(fh.make_filename(args.file, dirs=["templates"]))
     map_slide = ppt.slides[0]

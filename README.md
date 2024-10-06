@@ -1,9 +1,36 @@
 # Arbetsschema
 
+
 Detta program genererar arbetsschema och sjösättningsschema från en rapport FRÅN BAS.
 
 Rapporten läses in, ett set av datum för året skapas, varefter en rapport genereras per
 dag definierad som sjösättningsdag, såväl arbetspass som sjösättningar
+
+
+# Platsplanering
+```
+options:
+  -h, --help            show this help message and exit
+  --file FILE           PowerPoint file to read
+  --requests REQUESTS   Excel file with requests for spots
+  --members MEMBERS     Excel file with boat information
+  --outfile OUTFILE     Filename for output PowerPoint file
+  --exmembers EXMEMBERS
+                        Filename with ex-members
+  --onland ONLAND       Excel file with members already on land
+  --scheduled SCHEDULED
+                        Excel file with members already on land
+  --updateboat UPDATEBOAT
+                        Update boat information
+```
+
+## Förklaringar till parametrar
+### --file
+Default: templates/*karta*.pptx
+
+### --updateboat
+Ange ett nummer för båt som skall in på varvskartan. Denna båt behöver finnas med information om namn och mått i medlemsfilen.
+Om denna parameter anges kommer inga andra båtar att uppdateras. Båten behöver INTE finnas med i `--requests`-filen.
 
 
 # Om du vill använda koden
