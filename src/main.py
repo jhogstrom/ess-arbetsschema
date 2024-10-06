@@ -75,7 +75,7 @@ def make_report(
     header: str,
     map_pptx: Optional[Presentation] = None,
     data_settings: dict,
-):
+) -> int:
     logger.info(f"Generating report for {date}")
 
     boatrows = sorted(
@@ -122,6 +122,7 @@ def make_report(
     boats = []
     # Write the matchrows to the sheet
     sheet.insert_rows(start_row, len(boatrows))
+    result = len(boatrows)
     for i, row in enumerate(boatrows, start=start_row):
         add_cell(sheet, i, 1, row["Pass tid"])
         # Medlem (fullt namn) pattern: "<namn> (<medlemsnummer>)"
@@ -181,6 +182,7 @@ def make_report(
     logger.info(
         f"== Summary '{header} {date}': {len(boatrows)} Arbetspass: {len(work_rows)}"
     )
+    return result
 
 
 def get_report_filename(path: str) -> str:
@@ -207,7 +209,7 @@ if __name__ == "__main__":
     fh = FileHelper(logger)
     # report_filename = get_report_filename(args.file)
     schedule_filename = fh.make_filename(args.file, dirs=["report"])
-    logger.debug(f"Reading file '{schedule_filename}'")
+    logger.info(f"Reading schedule file '{schedule_filename}'")
     schedule = pd.read_excel(schedule_filename)
     BOAT_SCHEDULE = "Torrsättning 2024"
     WORK_SCHEDULE = "Arbetsschema Torrsättning 2024"
@@ -226,6 +228,7 @@ if __name__ == "__main__":
         os.makedirs(args.outdir)
     # Iterate over the dates. Generate a schedule for each date that is in the future
     # and delete the file if it is in the past
+    stats = {}
     for d in dates:
         output_filename = make_output_filename(args.outdir, d, "xlsx")
         map_output_filename = make_output_filename(args.outdir, d, "pptx")
@@ -235,7 +238,7 @@ if __name__ == "__main__":
             >= datetime.datetime.today().date()
         ):
             ppt = fh.read_pptx_file(fh.make_filename(args.mapfile, dirs=["templates"]))
-            make_report(
+            stats[d] = make_report(
                 date=d,
                 header=args.header,
                 schedule=schedule,
@@ -249,4 +252,10 @@ if __name__ == "__main__":
             # Delete the file if it exists
             if os.path.exists(output_filename):
                 os.remove(output_filename)
+            if os.path.exists(map_output_filename):
+                os.remove(map_output_filename)
             logger.debug(f"**\n** Skipping passed date {d}\n**")
+    logger.info(f"Used schedule file '{schedule_filename}'")
+    logger.info("Antal båtar per dag")
+    for k, v in stats.items():
+        logger.info(f"  {k}: {v}")
