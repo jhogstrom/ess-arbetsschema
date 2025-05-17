@@ -33,7 +33,8 @@ class FileHelper:
             raise FileNotFoundError(
                 f"File {filename} not found in {dirs} using pattern {filename}"
             )
-        result = max([_ for _ in matches if "~" not in _], key=os.path.getmtime)
+        result = sorted(matches, key=lambda x: os.path.basename(x), reverse=True)[0]
+        # result = max([_ for _ in matches if "~" not in _], key=os.path.getmtime)
         self.logger.debug(f"File {filename} => {result}")
         return result
 
