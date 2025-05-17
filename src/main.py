@@ -281,7 +281,7 @@ if __name__ == "__main__":
     logger = setup_logger("sched", "INFO")
     fh = FileHelper(logger)
 
-    schedule_filename = fh.make_filename(args.file, dirs=["report"])
+    schedule_filename = fh.make_filename(args.file, dirs=["report", ".reports/reports"])
     logger.info(f"Reading schedule file '{schedule_filename}'")
     schedule = pd.read_excel(schedule_filename)
     BOAT_SCHEDULE = "Sjösättning 2025"

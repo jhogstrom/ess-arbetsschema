@@ -33,7 +33,7 @@ jobs:
 
             - name: Generate schedule
               env:
-                REPORT_FILE: ./.reports/reports/report.xlsx
+                REPORT_FILE: Schemagenerering*.xlsx
               run: |
                 make schema
                 find stage
