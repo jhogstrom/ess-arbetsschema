@@ -257,7 +257,7 @@ def generate_reports(
             >= datetime.datetime.today().date()
         ):
             original_map_ppt = fh.read_pptx_file(
-                fh.make_filename(mapfile, dirs=["templates"])
+                fh.make_filename(mapfile, dirs=["templates", ".reports/templates"])
             )
             stats[d] = make_report(
                 date=d,
