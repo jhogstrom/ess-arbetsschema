@@ -25,7 +25,15 @@ jobs:
 
             - name: Checkout reports
               uses: actions/checkout@v4
+              id: reports
               with:
                   token: ${{ steps.generate-token.outputs.token }}
                   repository: 'jhogstrom/ess-data'
                   path: .reports
+
+            - name: Generate schedule
+              env:
+                REPORT_FILE: ./.reports/reports/report.xlsx
+              run: |
+                make schema
+                find stage

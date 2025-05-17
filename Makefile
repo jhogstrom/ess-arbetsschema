@@ -17,11 +17,11 @@ $(dirs):
 	$(PYTHON) -m venv $@
 
 $(STAGE)/requirements.txt: requirements.txt
-	$(VENV) pip install -r $<
+	$(if $(CI),,$(VENV)) pip install -r $<
 	touch $@
 
 .phony: prereqs
-prereqs: $(dirs) .venv $(STAGE)/requirements.txt
+prereqs: $(dirs) $(if $(CI),,.venv) $(STAGE)/requirements.txt
 
 .phony: karta
 karta: prereqs
