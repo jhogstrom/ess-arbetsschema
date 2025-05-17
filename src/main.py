@@ -175,9 +175,12 @@ def make_report(
     wb.save(output_filename)
     logger.info(f"Report written to '{output_filename}'")
 
-    slide = map_pptx.slides[0]
-    color_boats(slide, boats, RGBColor(255, 255, 26), "scheduled", logger, terse=False)
-    map_pptx.save(map_output_filename)
+    if map_pptx is not None:
+        slide = map_pptx.slides[0]
+        color_boats(
+            slide, boats, RGBColor(255, 255, 26), "scheduled", logger, terse=False
+        )
+        map_pptx.save(map_output_filename)
     logger.info(f"Map written to '{output_filename}'")
     logger.info(
         f"== Summary '{header} {date}': {len(boatrows)} Arbetspass: {len(work_rows)}"
