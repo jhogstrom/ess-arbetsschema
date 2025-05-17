@@ -185,34 +185,104 @@ def make_report(
     return result
 
 
-def get_report_filename(path: str) -> str:
-    if os.path.isfile(path):
-        return path
-    d = args.file
-    # Get the files in the directory, and return the newest. All files should match *.xlsx
-    files = [
-        os.path.join(d, f)
-        for f in os.listdir(d)
-        if os.path.isfile(os.path.join(d, f)) and f.endswith(".xlsx")
-    ]
-    # Get the newest file
-    return max(files, key=os.path.getmtime)
-
-
 def make_output_filename(outdir: str, date: str, suffix: str) -> str:
     return os.path.join(outdir, f"Förarschema ESS {date}.{suffix}")
+
+
+def ensure_delete(filename: str):
+    if os.path.exists(filename):
+        os.remove(filename)
+
+
+def find_balances(
+    schedule: pd.DataFrame,
+    data_settings: dict,
+    boat_schedule_name: str,
+    work_schedule_name: str,
+):
+    # print(schedule.columns)
+
+    schedules = {}
+
+    for row in schedule.iterrows():
+        d = row[1][data_settings["date_column"]]
+        if (
+            datetime.datetime.strptime(d, "%Y-%m-%d").date()
+            < datetime.datetime.today().date()
+        ):
+            continue
+        key = d + " " + row[1][data_settings["schedule_time_column"]]
+        if pd.isna(row[1][data_settings["name_column"]]):
+            continue
+        schema_type = row[1][data_settings["schedule_column"]]
+        if schema_type not in [boat_schedule_name, work_schedule_name]:
+            continue
+        if key not in schedules:
+            schedules[key] = {boat_schedule_name: [], work_schedule_name: []}
+
+        schedules[key][schema_type].append(row[1][data_settings["email_column"]])
+
+    for k, v in sorted(schedules.items(), key=lambda x: x[0]):
+        if len(v[boat_schedule_name]) > 0 and len(v[work_schedule_name]) <= 1:
+            print(
+                k,
+                f"saknas folk - {len(v[boat_schedule_name])} båtar {len(v[work_schedule_name])} medhjälpare",
+            )
+        if len(v[boat_schedule_name]) == 0 and len(v[work_schedule_name]) > 0:
+            print(k, f"överbefolkat - 0 båtar {len(v[work_schedule_name])} medhjälpare")
+
+
+def generate_reports(
+    *,
+    dates: list[str],
+    schedule: pd.DataFrame,
+    data_settings: dict,
+    outdir: str,
+    header: str,
+    mapfile: str,
+    template: str,
+) -> Dict[str, int]:
+    # Iterate over the dates. Generate a schedule for each date that is in the future
+    # and delete the file if it is in the past
+    stats = {}
+    for d in dates:
+        output_filename = make_output_filename(outdir, d, "xlsx")
+        map_output_filename = make_output_filename(outdir, d, "pptx")
+
+        if (
+            datetime.datetime.strptime(d, "%Y-%m-%d").date()
+            >= datetime.datetime.today().date()
+        ):
+            original_map_ppt = fh.read_pptx_file(
+                fh.make_filename(mapfile, dirs=["templates"])
+            )
+            stats[d] = make_report(
+                date=d,
+                header=header,
+                schedule=schedule,
+                output_filename=output_filename,
+                map_output_filename=map_output_filename,
+                template=template,
+                data_settings=data_settings,
+                map_pptx=original_map_ppt,
+            )
+        else:
+            ensure_delete(output_filename)
+            ensure_delete(map_output_filename)
+            logger.debug(f"**\n** Skipping passed date {d}\n**")
+    return stats
 
 
 if __name__ == "__main__":
     args = parseargs()
     logger = setup_logger("sched", "INFO")
     fh = FileHelper(logger)
-    # report_filename = get_report_filename(args.file)
+
     schedule_filename = fh.make_filename(args.file, dirs=["report"])
     logger.info(f"Reading schedule file '{schedule_filename}'")
     schedule = pd.read_excel(schedule_filename)
-    BOAT_SCHEDULE = "Torrsättning 2024"
-    WORK_SCHEDULE = "Arbetsschema Torrsättning 2024"
+    BOAT_SCHEDULE = "Sjösättning 2025"
+    WORK_SCHEDULE = "Arbetspass sjösättning 2025"
 
     data_settings = {
         "boat_schedule": BOAT_SCHEDULE,
@@ -220,41 +290,29 @@ if __name__ == "__main__":
         "schedule_column": "Schema",
         "date_column": "Datum",
         "name_column": "Medlem (fullt namn)",
+        "schedule_time_column": "Pass tid",
+        "email_column": "Epost",
     }
-    # ppt = fh.read_pptx_file(fh.make_filename(args.mapfile, dirs=["templates"]))
 
     dates = get_dates(schedule, BOAT_SCHEDULE)
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
-    # Iterate over the dates. Generate a schedule for each date that is in the future
-    # and delete the file if it is in the past
-    stats = {}
-    for d in dates:
-        output_filename = make_output_filename(args.outdir, d, "xlsx")
-        map_output_filename = make_output_filename(args.outdir, d, "pptx")
+    stats = generate_reports(
+        dates=dates,
+        schedule=schedule,
+        data_settings=data_settings,
+        outdir=args.outdir,
+        header=args.header,
+        mapfile=args.mapfile,
+        template=args.template,
+    )
 
-        if (
-            datetime.datetime.strptime(d, "%Y-%m-%d").date()
-            >= datetime.datetime.today().date()
-        ):
-            ppt = fh.read_pptx_file(fh.make_filename(args.mapfile, dirs=["templates"]))
-            stats[d] = make_report(
-                date=d,
-                header=args.header,
-                schedule=schedule,
-                output_filename=output_filename,
-                map_output_filename=map_output_filename,
-                template=args.template,
-                data_settings=data_settings,
-                map_pptx=ppt,
-            )
-        else:
-            # Delete the file if it exists
-            if os.path.exists(output_filename):
-                os.remove(output_filename)
-            if os.path.exists(map_output_filename):
-                os.remove(map_output_filename)
-            logger.debug(f"**\n** Skipping passed date {d}\n**")
+    find_balances(
+        schedule,
+        data_settings,
+        boat_schedule_name=BOAT_SCHEDULE,
+        work_schedule_name=WORK_SCHEDULE,
+    )
     logger.info(f"Used schedule file '{schedule_filename}'")
     logger.info("Antal båtar per dag")
     for k, v in stats.items():
