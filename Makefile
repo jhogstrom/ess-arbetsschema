@@ -1,3 +1,5 @@
+-include .env
+
 PYTHON?=python
 ifeq ($(strip $(VIRTUAL_ENV)),)
 VENV=source .venv/Scripts/activate;
@@ -7,6 +9,7 @@ KARTVERKTYG=$(PYTHON) src/platsplanering.py
 SCHEMAVERKTYG=$(PYTHON) src/main.py
 STAGE=stage
 CLUBNAME?=ESS
+UV=$(if $(CI),,uv)
 
 dirs=$(STAGE)
 
@@ -17,15 +20,18 @@ $(dirs):
 	$(PYTHON) -m venv $@
 
 $(STAGE)/requirements.txt: requirements.txt
-	$(VENV) pip install -r $<
+	$(if $(CI),,$(VENV)) $(UV) pip install -r $<
 	touch $@
 
 .phony: prereqs
-prereqs: $(dirs) .venv $(STAGE)/requirements.txt
+prereqs: $(dirs) $(if $(CI),,.venv) $(STAGE)/requirements.txt
 
 .phony: karta
 karta: prereqs
-	$(KARTVERKTYG)
+	$(KARTVERKTYG) \
+		$(if $(REQUEST_SOURCE),--requests $(REQUEST_SOURCE)) \
+		$(if $(EXMEMBERS),--exmembers $(EXMEMBERS)) \
+		$(if $(ONLAND),--onland $(ONLAND))
 
 .phony: schema
 schema: prereqs

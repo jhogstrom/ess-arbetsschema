@@ -175,9 +175,12 @@ def make_report(
     wb.save(output_filename)
     logger.info(f"Report written to '{output_filename}'")
 
-    slide = map_pptx.slides[0]
-    color_boats(slide, boats, RGBColor(255, 255, 26), "scheduled", logger, terse=False)
-    map_pptx.save(map_output_filename)
+    if map_pptx is not None:
+        slide = map_pptx.slides[0]
+        color_boats(
+            slide, boats, RGBColor(255, 255, 26), "scheduled", logger, terse=False
+        )
+        map_pptx.save(map_output_filename)
     logger.info(f"Map written to '{output_filename}'")
     logger.info(
         f"== Summary '{header} {date}': {len(boatrows)} Arbetspass: {len(work_rows)}"
@@ -254,7 +257,7 @@ def generate_reports(
             >= datetime.datetime.today().date()
         ):
             original_map_ppt = fh.read_pptx_file(
-                fh.make_filename(mapfile, dirs=["templates"])
+                fh.make_filename(mapfile, dirs=["templates", ".reports/templates"])
             )
             stats[d] = make_report(
                 date=d,
@@ -278,7 +281,7 @@ if __name__ == "__main__":
     logger = setup_logger("sched", "INFO")
     fh = FileHelper(logger)
 
-    schedule_filename = fh.make_filename(args.file, dirs=["report"])
+    schedule_filename = fh.make_filename(args.file, dirs=["report", ".reports/reports"])
     logger.info(f"Reading schedule file '{schedule_filename}'")
     schedule = pd.read_excel(schedule_filename)
     BOAT_SCHEDULE = "Sjösättning 2025"

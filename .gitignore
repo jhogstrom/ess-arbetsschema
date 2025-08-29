@@ -1,3 +1,4 @@
+.private
 stage
 .venv
 .env
@@ -7,4 +8,7 @@ templates/*varvskarta*.pptx
 boatinfo
 __pycache__
 *.pyc
-googletest
+googletest*
+# Credentials
+token.json
+google-credentials.json
