@@ -16,3 +16,14 @@ Follow the settings in flake8. Reformat files as necessary. Use type hints. Stop
 - Use flake8 configuration for linting rules
 - Format code with Black or similar formatter
 - Ask for clarification when requirements are unclear or ambiguous
+
+## Testing Requirements
+Write code that is easy to test and include test cases when appropriate.
+
+- Structure code to enable unit testing (avoid tightly coupled functions)
+- Separate business logic from I/O operations when possible
+- Include test cases for new functions and critical code paths
+- Use pytest conventions for test structure and naming
+- Include both positive and negative test cases
+- Mock external dependencies (files, APIs, databases) in tests
+- Write testable code by using dependency injection where appropriate

@@ -1,9 +1,2 @@
 {
-  "github.copilot.chat.experimental.codeGeneration.instructions.codegen": true,
-  "github.copilot.chat.experimental.agent": true,
-  "github.copilot.chat.codeGeneration.instructionsFile": ".github/copilot-instructions.md",
-  "chat.agent.enabled": true,
-  "chat.promptFiles": true,
-  "github.copilot.chat.agent.runTasks": true,
-  "accessibility.openChatEditedFiles": true
 }
