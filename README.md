@@ -12,7 +12,7 @@ dag definierad som sjösättningsdag, såväl arbetspass som sjösättningar
 options:
   -h, --help            show this help message and exit
   --file FILE           PowerPoint file to read
-  --requests REQUESTS   Excel file with requests for spots
+  --requests REQUESTS   <Excel file|google sheet id> with requests for spots
   --members MEMBERS     Excel file with boat information
   --outfile OUTFILE     Filename for output PowerPoint file
   --exmembers EXMEMBERS

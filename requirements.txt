@@ -2,6 +2,7 @@ pandas
 openpyxl
 python-dotenv
 python-pptx
-#google-api-python-client
-#google-auth-httplib2
-#google-auth-oauthlib
+
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib

@@ -1,9 +1,10 @@
 import glob
 import logging
 import os
+import re
 from typing import Any, List, Optional
 
-from pptx import Presentation
+from pptx import Presentation, presentation
 from pptx.dml.color import RGBColor
 
 
@@ -12,12 +13,35 @@ class FileHelper:
         self.logger = logger
 
     def make_filename(self, filename: str, *, dirs: Optional[List[str]] = None) -> str:
+        """
+        Resolves the given filename to an existing file path or Google Sheet ID.
+        If the filename matches the Google Sheet ID pattern, it is returned as-is.
+        Otherwise, the function searches for the file in the current directory and in the provided
+        list of directories (`dirs`). If the file is found, its path is returned. If multiple matches
+        are found, the most recent one (by basename, in reverse order) is returned. If the file cannot
+        be found, a FileNotFoundError is raised.
+        Args:
+            filename (str): The name of the file or Google Sheet ID to resolve.
+            dirs (Optional[List[str]], optional): A list of directories to search for the file. Defaults to None.
+        Returns:
+            str: The resolved file path or Google Sheet ID.
+        Raises:
+            ValueError: If no filename is provided.
+            FileNotFoundError: If the file cannot be found in the specified directories.
+        """
+        google_sheet_id_pattern = r"^[a-zA-Z0-9-_]{44}$"
+        is_google_sheet_id = bool(re.match(google_sheet_id_pattern, filename))
+
+        self.logger.debug(f"Filename is Google Sheet ID: {is_google_sheet_id}")
+        if is_google_sheet_id:
+            return filename
+
         if not filename:
             raise ValueError("No filename provided")
         if os.path.exists(filename):
             self.logger.debug(f"File {filename} => {filename}")
             return filename
-        dirs = [] or dirs
+        dirs = dirs or []
         for d in dirs:
             f = os.path.join(d, filename)
             if os.path.exists(f):
@@ -33,12 +57,12 @@ class FileHelper:
             raise FileNotFoundError(
                 f"File {filename} not found in {dirs} using pattern {filename}"
             )
-        result = sorted(matches, key=lambda x: os.path.basename(x), reverse=True)[0]
+        result = max(matches, key=os.path.getmtime)
         # result = max([_ for _ in matches if "~" not in _], key=os.path.getmtime)
         self.logger.debug(f"File {filename} => {result}")
         return result
 
-    def read_pptx_file(self, filename: str) -> Optional[Presentation]:
+    def read_pptx_file(self, filename: str) -> presentation.Presentation:
         """
         Read the PowerPoint file and return the Presentation object.
 
@@ -55,8 +79,8 @@ class FileHelper:
         if not filename:
             raise ValueError("No filename provided")
         if not os.path.exists(filename):
-            self.logger.warning(f"Powerooint-file {filename} not found")
-            return None
+            self.logger.warning(f"Powerpoint-file {filename} not found")
+            exit(1)
 
         self.logger.info(f"Reading file {filename}")
 
@@ -64,9 +88,10 @@ class FileHelper:
         return Presentation(filename)
 
 
-def setup_logger(logger_name: str, level: str = None) -> logging.Logger:
+def setup_logger(logger_name: str, level: str | None = None) -> logging.Logger:
     logger = logging.getLogger(logger_name)
-    logger.setLevel(level or "INFO")
+    level = level or "INFO"
+    logger.setLevel(level)
     ch = logging.StreamHandler()
     ch.setLevel(level)
     formatter = logging.Formatter(

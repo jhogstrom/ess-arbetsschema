@@ -13,6 +13,7 @@ from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.slide import Slide
 from pptx.util import Cm, Inches, Pt
 
+from googleapi import get_google_sheet, get_sheet_titles
 from helpers import FileHelper, color_boats, get_shape, setup_logger
 
 FILL_COLOR = RGBColor(214, 245, 214)
@@ -45,25 +46,26 @@ def define_colors(filename: Optional[str]) -> Dict[str, RGBColor]:
 
 
 def parseargs():
+    year = datetime.datetime.now().year
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--file", default="*karta*.pptx", help="PowerPoint file to read"
+        "--file", default="*karta*.pptx", help="PowerPoint file to read."
     )
     parser.add_argument(
         "--requests",
-        default="Anmälningar 2024.xlsx",
-        help="Excel file with requests for spots",
+        default=f"Anmälningar {year}.xlsx",
+        help="Excel file with requests for spots.",
     )
     parser.add_argument(
         # "--boats", default="Båtmått*.xlsx", help="Excel file with boat information"
         "--members",
         default="Alla_medlemmar_inkl_båtinfo_*.xlsx",
-        help="Excel file with boat information",
+        help="Excel file with boat information.",
     )
     parser.add_argument(
         "--outfile",
-        default=f"stage/varvskarta {datetime.datetime.now().year}.pptx",
-        help="Filename for output PowerPoint file",
+        default=f"stage/varvskarta {year}.pptx",
+        help="Filename for output PowerPoint file.",
     )
     parser.add_argument(
         "--exmembers",
@@ -73,12 +75,12 @@ def parseargs():
     parser.add_argument(
         "--onland",
         default="boatinfo/sommarliggare.xlsx",
-        help="Excel file with members already on land",
+        help="Excel file with members already on land.",
     )
     parser.add_argument(
         "--scheduled",
-        default="boatinfo/torrsättning.xlsx",
-        help="Excel file with members already on land",
+        default="Torrsättning*.xlsx",
+        help="Report from BAS with scheduled members.",
     )
     parser.add_argument("--updateboat", required=False, help="Update boat information")
     return parser.parse_args()
@@ -86,7 +88,12 @@ def parseargs():
 
 def make_items_integer(thelist: list) -> List[int]:
     """
-    Make all items in the list integers. If the item is not an integer, try to convert it to an integer by removing all non-numeric characters.
+    Make all items in the list integers.
+    If the item is not an integer,
+    try to convert it to an integer by
+    removing all non-numeric characters.
+
+    The result is deduplicated.
 
     Args:
         thelist (list): List of items to convert to integers
@@ -94,10 +101,10 @@ def make_items_integer(thelist: list) -> List[int]:
     Returns:
         List[int]: Returns a list of integers
     """
+    logger.debug(f"Cleaning a list of {len(thelist)} 'integers'.")
     for i, m in enumerate(thelist):
         org = m
         if not isinstance(m, int):
-            logger.warning(f"Item '{m}' is not an integer")
             for c in m:
                 if not c.isdigit():
                     m = m.replace(c, "")
@@ -105,70 +112,143 @@ def make_items_integer(thelist: list) -> List[int]:
                 thelist[i] = int(m)
             except ValueError:
                 logger.error(f"Could not convert '{org}' to integer")
-    return thelist
+    result = list(set(thelist))
+    logger.debug(f"Read {len(result)} valid requests")
+    return sorted(result)
 
 
-def members_on_land(filename: str) -> list[int]:
-    logger.info(f"Reading who's on land from file {filename}")
-    members = pd.read_excel(filename)
+COL_TITLE_memberid = "Medlemsnummer"
+
+
+def members_on_land(filename: str) -> List[int]:
     year = datetime.datetime.now().year
-    return members.loc[members["År"] == year, "Medlemsnr"].tolist()
+    if os.path.exists(filename):
+        logger.info(f"Reading who's on land from file {filename}")
+        members = pd.read_excel(filename)
+        return members.loc[members["År"] == year, COL_TITLE_memberid].tolist()
+
+    values = get_google_sheet(filename, get_sheet_titles(filename)[0])
+    headers = values[0] if values else []
+    COL_memberid = (
+        headers.index(COL_TITLE_memberid) if COL_TITLE_memberid in headers else -1
+    )
+    COL_year = headers.index(str(year)) if str(year) in headers else -1
+
+    result = [
+        int(row[COL_memberid])
+        for row in values[1:]
+        if row and (row[COL_year] or " ") in "xX"
+    ]
+    return result
 
 
 def member_left_club(filename: str) -> list[int]:
-    with open(filename) as f:
-        lines = [_ for _ in f.readlines() if not _.startswith("#")]
+    if os.path.exists(filename):
+        with open(filename) as f:
+            lines = [_ for _ in f.readlines() if not _.startswith("#")]
 
-    # Regular expression to find the first number in each line
-    number_pattern = re.compile(r"\d+")
+        # Regular expression to find the first number in each line
+        number_pattern = re.compile(r"\d+")
 
-    # Extract the first number from each line
-    return [
-        int(number_pattern.search(line).group())
-        for line in lines
-        if number_pattern.search(line)
+        # Extract the first number from each line
+        return [
+            int(number_pattern.search(line).group())
+            for line in lines
+            if number_pattern.search(line)
+        ]
+
+    values = get_google_sheet(filename, get_sheet_titles(filename)[0])
+    headers = values[0] if values else []
+    COL_memberid = (
+        headers.index(COL_TITLE_memberid) if COL_TITLE_memberid in headers else -1
+    )
+    result = [
+        int(row[COL_memberid])
+        for row in values[1:]
+        if row and len(row) > COL_memberid and row[COL_memberid]
     ]
+
+    return result
 
 
 def get_scheduled(filename: str) -> list[int]:
+    logger.info(f"Reading who's scheduled for dry dock from file {filename}.")
     schedule = pd.read_excel(filename)
     scheduled = [
         int(_) for _ in set(schedule["Medlemsnr"].tolist()) if not math.isnan(_)
     ]
+    logger.info(f"Read {len(scheduled)} scheduled for dry dock from {filename}.")
     return scheduled
 
 
 def get_no_spot_requested(filename: str) -> list[int]:
     # TODO: Parametrize the NO_SPOT_OPTION string
-    request_data = pd.read_excel(filename)
     NO_SPOT_OPTION = (
         "Jag vill INTE ta upp min båt i år och vill INTE ha nån vinterplats hos ESS"
     )
-    result = make_items_integer(
-        request_data.loc[
-            request_data["Upptagning"] == NO_SPOT_OPTION, "Medlemsnummer"
-        ].tolist()
-    )
+    COL_TITLE_upptagning = "Upptagning"
+    if os.path.exists(filename):
+        request_data = pd.read_excel(filename)
+        result = make_items_integer(
+            request_data.loc[
+                request_data[COL_TITLE_upptagning] == NO_SPOT_OPTION, COL_TITLE_memberid
+            ].tolist()
+        )
+    else:
+        values = get_google_sheet(filename, get_sheet_titles(filename)[0])
+        headers = values[0] if values else []
+        COL_memberid = (
+            headers.index(COL_TITLE_memberid) if COL_TITLE_memberid in headers else -1
+        )
+        COL_upptagning = (
+            headers.index(COL_TITLE_upptagning)
+            if COL_TITLE_upptagning in headers
+            else -1
+        )
+        result = [
+            row[COL_memberid]
+            for row in values[1:]
+            if row[COL_upptagning] == NO_SPOT_OPTION
+        ]
+
     return result
 
 
-def get_requests(filename: str) -> list[int]:
-    logger.info(f"Reading requests file {filename}")
-    request_data = pd.read_excel(filename)
-    result = make_items_integer(request_data["Medlemsnummer"].tolist())
-    logger.debug(f"Read {len(result)} requests")
-    result = set(result)
-    logger.debug(f"Read {len(result)} unique requests")
-    return result
+def get_requests(filename: str) -> List[int]:
+    """
+    Retrieves a list of member IDs from a given file.
+    If the file exists locally, it reads the member IDs from the specified column in an Excel file.
+    If the file does not exist, it downloads the data from a Google Sheet and extracts the member IDs.
+    Args:
+        filename (str): The path to the local file or the identifier for the Google Sheet.
+    Returns:
+        List[int]: A list of member IDs as integers.
+    """
+    # TODO: Handle members with more than one boat.
+    # The basic idea is to use the field containing boatname, and
+    # add ".<n>" to the member ID. That would require a type change from integer
+    # to float OR use strings and add ".<boatname>" to the member ID.
+    if os.path.exists(filename):
+        logger.info(f"Reading file {filename}")
+        request_data = pd.read_excel(filename)
+        requests = request_data[COL_TITLE_memberid].tolist()
+    else:
+        values = get_google_sheet(filename, get_sheet_titles(filename)[0])
+        headers = values[0] if values else []
+        COL_memberid = (
+            headers.index(COL_TITLE_memberid) if COL_TITLE_memberid in headers else -1
+        )
+        requests = [
+            row[COL_memberid] for row in values[1:] if row and len(row) > COL_memberid
+        ]
+    return make_items_integer(requests)
 
 
 def read_members(filename: str) -> List[Dict[Hashable, Any]]:
-    logger.info(f"Reading member file {filename}")
-    boats = pd.read_excel(filename)
-    # Filter out the boats that are not in the requests
-    # boats = boats[boats["Medlemsnr"].isin(all_requests)]
+    logger.info(f"Reading member file {filename}.")
+    values = pd.read_excel(filename)
     # Filter out the columns we are interested in
-    boats = boats[
+    result = values[
         [
             "Medlemsnr",
             "Längd (båt)",
@@ -179,8 +259,8 @@ def read_members(filename: str) -> List[Dict[Hashable, Any]]:
             # "Modell",
         ]
     ].to_dict(orient="records")
-    logger.info(f"Read {len(boats)} boats from member file that are in the requests.")
-    return boats
+    logger.info(f"Read {len(result)} boats from member file.")
+    return result
 
 
 def get_boats(
@@ -189,40 +269,47 @@ def get_boats(
     already_there: List[int],
     scheduled: List[int],
     no_spot_requested: List[int],
-    all_requests,
+    requested_spots: List[int],
 ) -> list:
     # TODO: Parametrize the column names
 
-    extra = 0
+    logger.info(f"Requested spots: {len(requested_spots)}")
+    logger.info(f"Booked spots: {len(scheduled)}")
+    logger.info(f"Already there: {len(already_there)}")
+    logger.info(f"No spot requested: {len(no_spot_requested)}")
+
+    booked_but_not_requested = 0
     for id in scheduled:
-        if id not in all_requests:
-            logger.warning(f"Member {id} not in requests, but booked for dry dock")
-            all_requests.add(id)
-            extra += 1
-    logger.debug(f"Added {extra} scheduled boats to requests")
+        if id not in requested_spots:
+            logger.warning(f"Member {id} not in requests, but booked for dry dock.")
+            requested_spots.append(id)
+            booked_but_not_requested += 1
+    if booked_but_not_requested:
+        logger.info(f"Added {booked_but_not_requested} scheduled boats to requests.")
 
     for id in already_there:
-        if id not in all_requests:
-            logger.warning(f"Member {id} not in requests, but already on land")
-            all_requests.add(id)
+        if id not in requested_spots:
+            logger.warning(f"Member {id} not in requests, but already on land.")
+            requested_spots.append(id)
 
-    for r in all_requests:
+    for r in requested_spots:
         if r not in [b["Medlemsnr"] for b in members]:
-            logger.warning(f"Member {r} not found in boat file")
+            logger.warning(f"Member {r} not found in member list.")
 
-    members = [b for b in members if b["Medlemsnr"] in all_requests]
-    for member in members:
+    requests: List[dict] = [b for b in members if b["Medlemsnr"] in requested_spots]
+    for member in requests:
         member["member"] = int(member.pop("Medlemsnr"))
-        member["length"] = float(member.pop("Längd (båt)")) + 1
-        member["width"] = float(member.pop("Bredd")) + 1
+        member["length"] = float(member.pop("Längd (båt)").replace(",", ".")) + 1
+        w = float(member.pop("Bredd").replace(",", ".")) + 1
+        # Round w up to nearest .0 or .5
+        member["width"] = math.ceil(w * 2) / 2
         # boat['name'] = f"{boat.pop('Förnamn')[0]} {boat.pop('Efternamn')}\n({boat.pop('Modell')})"
         member["name"] = f"{member.pop('Efternamn')}"
         member["requested"] = member["member"] not in no_spot_requested
 
     # Make boats unique by member id
-    members = {boat["member"]: boat for boat in members}
-    result = members.values()
-    logger.info(f"After deduplication: {len(result)} unique boats")
+    result = list({boat["member"]: boat for boat in requests}.values())
+    logger.info(f"After deduplication: {len(result)} unique boats to go on land.")
 
     return result
 
@@ -326,7 +413,7 @@ def add_boats_to_map(
         NAME_ONLY = "{member} {name}"  # noqa: F841
         SIZE_ONLY = "{member} {length:.1f}x{width:.1f}"  # noqa: F841
         FULL = "{member} {name}\n{length:.1f}x{width:.1f}"  # noqa: F841
-        caption = NAME_ONLY.format(**expansions)
+        caption = FULL.format(**expansions)
 
         set_shape_text(shape, caption)
     logger.info(f"Spots count: {counts[True]}")
@@ -341,6 +428,12 @@ def add_boats_to_map(
     for boat in boats:
         if not boat["requested"]:
             logger.info(f"{boat['member']} {boat['name']} has declined a spot")
+
+
+def mark_all_boats_as_unhandled(slide: Slide):
+    for s in slide.shapes:
+        if "Member:" in s.name:
+            s.fill.fore_color.rgb = colors["unknown"]
 
 
 def remove_shape_by_name(slide, shape_name: str) -> bool:
@@ -362,7 +455,7 @@ def remove_shape_by_name(slide, shape_name: str) -> bool:
     return False
 
 
-def update_revision(shape, revision: str = "1", boats: list = None):
+def update_revision(shape, revision: str = "1", boats: list | None = None):
     """
     Update the revision shape with the current date and time.
 
@@ -375,6 +468,18 @@ def update_revision(shape, revision: str = "1", boats: list = None):
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
     ]
     shape.text = "\n".join(text)
+
+
+def update_title(shape, title: str):
+    """
+    Update the title shape with the given title.
+
+    Args:
+        shape: Shape in pptx
+        title (str): Title text to set
+    """
+    shape.text = title
+    shape.text_frame.paragraphs[0].font.size = Pt(35)
 
 
 def update_legend(slide, colors):
@@ -395,48 +500,73 @@ def update_legend(slide, colors):
             shape.fill.fore_color.rgb = color
 
 
-if __name__ == "__main__":
-    args = parseargs()
-    colors = define_colors("templates/colors.json")
-    logger = setup_logger("spots", "INFO")
-    fh = FileHelper(logger)
+def read_and_process_input(
+    *,
+    request_source: str,
+    members_source: str,
+    on_land_source: str,
+    scheduled_source: str,
+    updateboat: int | None = None,
+) -> List[Dict[Hashable, Any]]:
 
-    all_requests = get_requests(fh.make_filename(args.requests, dirs=["boatinfo"]))
-    members = read_members(fh.make_filename(args.members, dirs=["boatinfo"]))
-    if args.updateboat:
-        scheduled = [int(args.updateboat)]
+    requested_spots = get_requests(request_source)
+    members = read_members(members_source)
+    if updateboat:
+        scheduled = [int(updateboat)]
         no_spot_requested = []
         already_there = []
-        ex_members = []
     else:
-        ex_members = member_left_club(
-            fh.make_filename(args.exmembers, dirs=["boatinfo"])
-        )
-        already_there = members_on_land(
-            fh.make_filename(args.onland, dirs=["boatinfo"])
-        )
-        scheduled = get_scheduled(fh.make_filename(args.scheduled, dirs=["boatinfo"]))
-        no_spot_requested = get_no_spot_requested(
-            fh.make_filename(args.requests, dirs=["boatinfo"])
-        )
+        already_there = members_on_land(on_land_source)
+        scheduled = get_scheduled(scheduled_source)
+        no_spot_requested = get_no_spot_requested(request_source)
 
     boats = get_boats(
         members=members,
         already_there=already_there,
         scheduled=scheduled,
         no_spot_requested=no_spot_requested,
-        all_requests=all_requests,
+        requested_spots=requested_spots,
     )
+    return boats
+
+
+if __name__ == "__main__":
+    args = parseargs()
+    colors = define_colors("templates/colors.json")
+    logger = setup_logger("spots", "INFO")
+
+    fh = FileHelper(logger)
+    ex_members_source = fh.make_filename(args.exmembers, dirs=["boatinfo"])
+    on_land_source = fh.make_filename(args.onland, dirs=["boatinfo"])
+    boats = read_and_process_input(
+        request_source=fh.make_filename(args.requests, dirs=["boatinfo"]),
+        members_source=fh.make_filename(args.members, dirs=["boatinfo"]),
+        on_land_source=on_land_source,
+        scheduled_source=fh.make_filename(args.scheduled, dirs=["boatinfo"]),
+        updateboat=args.updateboat,
+    )
+
+    ex_members = member_left_club(ex_members_source)
+    already_there = members_on_land(on_land_source)
+
     if args.updateboat:
         logger.info(f"Filtering boats on {args.updateboat}")
         boats = [b for b in boats if b["member"] == int(args.updateboat)]
 
-    ppt = fh.read_pptx_file(fh.make_filename(args.file, dirs=["templates"]))
+    powerpoint_filename = fh.make_filename(args.file, dirs=["templates"])
+    print(powerpoint_filename)
+
+    ppt = fh.read_pptx_file(powerpoint_filename)
     map_slide = ppt.slides[0]
+    mark_all_boats_as_unhandled(slide=map_slide)
     add_boats_to_map(
         slide=map_slide, boats=boats, ex_members=ex_members, already_there=already_there
     )
     update_revision(get_shape(map_slide, "Revision", logger), revision="1", boats=boats)
+    year = datetime.datetime.now().year
+    update_title(
+        get_shape(map_slide, "Rubrik", logger), title=f"Varvskarta ESS {year}/{year+1}"
+    )
     update_legend(map_slide, colors)
     try:
         ppt.save(args.outfile)
