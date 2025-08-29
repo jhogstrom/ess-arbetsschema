@@ -1,0 +1,7 @@
+{
+  "github.copilot.chat.experimental.codeGeneration.instructions.codegen": true,
+  "github.copilot.chat.experimental.agent": true,
+  "github.copilot.chat.codeGeneration.instructions": {
+    "codegen": true
+  }
+}
