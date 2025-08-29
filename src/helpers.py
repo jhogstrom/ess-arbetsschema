@@ -7,6 +7,8 @@ from typing import Any, List, Optional
 from pptx import Presentation, presentation
 from pptx.dml.color import RGBColor
 
+GOOGLE_SHEET_ID_LENGTH = 44  # Length of a Google Sheet ID
+
 
 class FileHelper:
     def __init__(self, logger) -> None:
@@ -29,7 +31,7 @@ class FileHelper:
             ValueError: If no filename is provided.
             FileNotFoundError: If the file cannot be found in the specified directories.
         """
-        google_sheet_id_pattern = r"^[a-zA-Z0-9-_]{44}$"
+        google_sheet_id_pattern = rf"^[a-zA-Z0-9-_]{{{GOOGLE_SHEET_ID_LENGTH}}}$"
         is_google_sheet_id = bool(re.match(google_sheet_id_pattern, filename))
 
         self.logger.debug(f"Filename is Google Sheet ID: {is_google_sheet_id}")
@@ -79,7 +81,7 @@ class FileHelper:
         if not filename:
             raise ValueError("No filename provided")
         if not os.path.exists(filename):
-            self.logger.warning(f"Powerpoint-file {filename} not found")
+            self.logger.warning(f"PowerPoint file {filename} not found")
             exit(1)
 
         self.logger.info(f"Reading file {filename}")
