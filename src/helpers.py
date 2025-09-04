@@ -122,7 +122,7 @@ def get_shape(slide, shape_name: str, logger: logging.Logger) -> Optional[Any]:
             logger.debug(f"Found shape '{shape_name}'.")
             return shape
     for shape in slide.shapes:
-        if any(_ in shape.text for _ in shape_name.split()):
+        if any(_ in shape.text.split() for _ in shape_name.split()):
             logger.debug(f"Found shape {shape.name} matching {shape_name}")
             return shape
     logger.debug(f"Did not find shape with name '{shape_name}'")

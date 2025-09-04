@@ -2,6 +2,7 @@ pandas
 openpyxl
 python-dotenv
 python-pptx
+pyperclip
 
 google-api-python-client
 google-auth-httplib2

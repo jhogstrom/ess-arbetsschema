@@ -4,9 +4,11 @@ import json
 import math
 import os
 import re
+from pprint import pprint
 from typing import Any, Dict, Hashable, List, Optional
 
 import pandas as pd
+import pyperclip
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
@@ -113,38 +115,40 @@ def make_items_integer(thelist: list) -> List[int]:
             except ValueError:
                 logger.error(f"Could not convert '{org}' to integer")
     result = list(set(thelist))
-    logger.debug(f"Read {len(result)} valid requests")
+    logger.info(f"Read {len(result)} valid requests")
     return sorted(result)
 
 
 COL_TITLE_memberid = "Medlemsnummer"
 
 
-def members_on_land(filename: str) -> List[int]:
+def read_members_on_land(document: str) -> List[int]:
     year = datetime.datetime.now().year
-    if os.path.exists(filename):
-        logger.info(f"Reading who's on land from file {filename}")
-        members = pd.read_excel(filename)
+    if os.path.exists(document):
+        logger.info(f"Reading who's on land from file {document}")
+        members = pd.read_excel(document)
         return members.loc[members["År"] == year, COL_TITLE_memberid].tolist()
 
-    values = get_google_sheet(filename, get_sheet_titles(filename)[0])
+    values = get_google_sheet(document, get_sheet_titles(document)[0])
     headers = values[0] if values else []
     COL_memberid = (
         headers.index(COL_TITLE_memberid) if COL_TITLE_memberid in headers else -1
     )
     COL_year = headers.index(str(year)) if str(year) in headers else -1
 
-    result = [
-        int(row[COL_memberid])
-        for row in values[1:]
-        if row and (row[COL_year] or " ") in "xX"
-    ]
+    result = sorted(
+        [
+            int(row[COL_memberid])
+            for row in values[1:]
+            if row and (row[COL_year] or " ") in "xX"
+        ]
+    )
     return result
 
 
-def member_left_club(filename: str) -> list[int]:
-    if os.path.exists(filename):
-        with open(filename) as f:
+def read_ex_members(document: str) -> list[int]:
+    if os.path.exists(document):
+        with open(document) as f:
             lines = [_ for _ in f.readlines() if not _.startswith("#")]
 
         # Regular expression to find the first number in each line
@@ -157,45 +161,47 @@ def member_left_club(filename: str) -> list[int]:
             if number_pattern.search(line)
         ]
 
-    values = get_google_sheet(filename, get_sheet_titles(filename)[0])
+    values = get_google_sheet(document, get_sheet_titles(document)[0])
     headers = values[0] if values else []
     COL_memberid = (
         headers.index(COL_TITLE_memberid) if COL_TITLE_memberid in headers else -1
     )
-    result = [
-        int(row[COL_memberid])
-        for row in values[1:]
-        if row and len(row) > COL_memberid and row[COL_memberid]
-    ]
+    result = sorted(
+        [
+            int(row[COL_memberid])
+            for row in values[1:]
+            if row and len(row) > COL_memberid and row[COL_memberid]
+        ]
+    )
 
     return result
 
 
-def get_scheduled(filename: str) -> list[int]:
-    logger.info(f"Reading who's scheduled for dry dock from file {filename}.")
-    schedule = pd.read_excel(filename)
-    scheduled = [
-        int(_) for _ in set(schedule["Medlemsnr"].tolist()) if not math.isnan(_)
-    ]
-    logger.info(f"Read {len(scheduled)} scheduled for dry dock from {filename}.")
+def read_schedule(document: str) -> list[int]:
+    logger.info(f"Reading who's scheduled for dry dock from file {document}.")
+    schedule = pd.read_excel(document)
+    scheduled = sorted(
+        [int(_) for _ in set(schedule["Medlemsnr"].tolist()) if not math.isnan(_)]
+    )
+    logger.info(f"Read {len(scheduled)} scheduled for dry dock from {document}.")
     return scheduled
 
 
-def get_no_spot_requested(filename: str) -> list[int]:
+def get_no_spot_requested(document: str) -> list[int]:
     # TODO: Parametrize the NO_SPOT_OPTION string
     NO_SPOT_OPTION = (
         "Jag vill INTE ta upp min båt i år och vill INTE ha nån vinterplats hos ESS"
     )
     COL_TITLE_upptagning = "Upptagning"
-    if os.path.exists(filename):
-        request_data = pd.read_excel(filename)
+    if os.path.exists(document):
+        request_data = pd.read_excel(document)
         result = make_items_integer(
             request_data.loc[
                 request_data[COL_TITLE_upptagning] == NO_SPOT_OPTION, COL_TITLE_memberid
             ].tolist()
         )
     else:
-        values = get_google_sheet(filename, get_sheet_titles(filename)[0])
+        values = get_google_sheet(document, get_sheet_titles(document)[0])
         headers = values[0] if values else []
         COL_memberid = (
             headers.index(COL_TITLE_memberid) if COL_TITLE_memberid in headers else -1
@@ -210,11 +216,13 @@ def get_no_spot_requested(filename: str) -> list[int]:
             for row in values[1:]
             if row[COL_upptagning] == NO_SPOT_OPTION
         ]
+        result = sorted(make_items_integer(result))
+        logger.info(f"Read {len(result)} who do not want a spot: {result}")
 
     return result
 
 
-def get_requests(filename: str) -> List[int]:
+def read_requests(document: str) -> List[int]:
     """
     Retrieves a list of member IDs from a given file.
     If the file exists locally, it reads the member IDs from the specified column in an Excel file.
@@ -228,12 +236,12 @@ def get_requests(filename: str) -> List[int]:
     # The basic idea is to use the field containing boatname, and
     # add ".<n>" to the member ID. That would require a type change from integer
     # to float OR use strings and add ".<boatname>" to the member ID.
-    if os.path.exists(filename):
-        logger.info(f"Reading file {filename}")
-        request_data = pd.read_excel(filename)
+    if os.path.exists(document):
+        logger.info(f"Reading file {document}")
+        request_data = pd.read_excel(document)
         requests = request_data[COL_TITLE_memberid].tolist()
     else:
-        values = get_google_sheet(filename, get_sheet_titles(filename)[0])
+        values = get_google_sheet(document, get_sheet_titles(document)[0])
         headers = values[0] if values else []
         COL_memberid = (
             headers.index(COL_TITLE_memberid) if COL_TITLE_memberid in headers else -1
@@ -241,24 +249,29 @@ def get_requests(filename: str) -> List[int]:
         requests = [
             row[COL_memberid] for row in values[1:] if row and len(row) > COL_memberid
         ]
-    return make_items_integer(requests)
+        # pprint(values)
+        pprint(len(sorted(requests)))
+        # exit(1)
+    return sorted(make_items_integer(requests))
 
 
-def read_members(filename: str) -> List[Dict[Hashable, Any]]:
-    logger.info(f"Reading member file {filename}.")
-    values = pd.read_excel(filename)
+def read_members(
+    document: str, columns: Optional[List[str]] = None
+) -> List[Dict[Hashable, Any]]:
+    logger.info(f"Reading member file {document}.")
+    values = pd.read_excel(document)
     # Filter out the columns we are interested in
-    result = values[
-        [
-            "Medlemsnr",
-            "Längd (båt)",
-            "Bredd",
-            "Förnamn",
-            "Efternamn",
-            "Plats",
-            # "Modell",
-        ]
-    ].to_dict(orient="records")
+    columns = columns or [
+        "Medlemsnr",
+        "Längd (båt)",
+        "Bredd",
+        "Förnamn",
+        "Efternamn",
+        "Plats",
+        # "Modell",
+    ]
+
+    result = values[columns].to_dict(orient="records")
     logger.info(f"Read {len(result)} boats from member file.")
     return result
 
@@ -274,6 +287,8 @@ def get_boats(
     # TODO: Parametrize the column names
 
     logger.info(f"Requested spots: {len(requested_spots)}")
+    logger.info(f"Requested spots: {requested_spots}")
+
     logger.info(f"Booked spots: {len(scheduled)}")
     logger.info(f"Already there: {len(already_there)}")
     logger.info(f"No spot requested: {len(no_spot_requested)}")
@@ -300,9 +315,11 @@ def get_boats(
     for member in requests:
         member["member"] = int(member.pop("Medlemsnr"))
         member["length"] = float(member.pop("Längd (båt)").replace(",", ".")) + 1
+        # add 1m to width
         w = float(member.pop("Bredd").replace(",", ".")) + 1
-        # Round w up to nearest .0 or .5
-        member["width"] = math.ceil(w * 2) / 2
+        # Round width up to nearest .0 or .5
+        w = math.ceil(w * 2) / 2
+        member["width"] = w
         # boat['name'] = f"{boat.pop('Förnamn')[0]} {boat.pop('Efternamn')}\n({boat.pop('Modell')})"
         member["name"] = f"{member.pop('Efternamn')}"
         member["requested"] = member["member"] not in no_spot_requested
@@ -418,7 +435,9 @@ def add_boats_to_map(
         set_shape_text(shape, caption)
     logger.info(f"Spots count: {counts[True]}")
     logger.info(f"Yield count: {counts[False]}")
-    color_boats(slide, ex_members, colors["member_left"], "has left the club", logger)
+    color_boats(
+        slide, list(set(ex_members)), colors["member_left"], "has left the club", logger
+    )
     color_boats(slide, already_there, colors["on_land"], "is already on land", logger)
 
     for s in slide.shapes:
@@ -509,15 +528,15 @@ def read_and_process_input(
     updateboat: int | None = None,
 ) -> List[Dict[Hashable, Any]]:
 
-    requested_spots = get_requests(request_source)
+    requested_spots = read_requests(request_source)
     members = read_members(members_source)
     if updateboat:
         scheduled = [int(updateboat)]
         no_spot_requested = []
         already_there = []
     else:
-        already_there = members_on_land(on_land_source)
-        scheduled = get_scheduled(scheduled_source)
+        already_there = read_members_on_land(on_land_source)
+        scheduled = read_schedule(scheduled_source)
         no_spot_requested = get_no_spot_requested(request_source)
 
     boats = get_boats(
@@ -530,31 +549,87 @@ def read_and_process_input(
     return boats
 
 
+def send_reminders(
+    *, memberfile: str, request_source: str, on_land_source: str, ex_members: List[int]
+):
+    """
+    Send reminders to members about their boat spots.
+    """
+    logger.info("Sending reminders to members...")
+    # Implementation for sending reminders goes here
+    members = read_members(
+        memberfile,
+        columns=[
+            "Medlemsnr",
+            "Förnamn",
+            "Efternamn",
+            "Epost 1",
+            "Längd (båt)",
+            "Bredd",
+        ],
+    )
+
+    # Remove members without a boat
+    members = [
+        m for m in members if not pd.isna(m["Längd (båt)"]) and not pd.isna(m["Bredd"])
+    ]
+
+    # Skip the opnes who submitted a request
+    requests = read_requests(request_source)
+    # Skip the ones that are already on land
+    already_there = read_members_on_land(on_land_source)
+    # Skip the ones that are ex-members
+    # ex_members (already passed in as argument)
+
+    handled = set(requests + already_there + ex_members)
+
+    missing = [m for m in members if m["Medlemsnr"] not in handled]
+    logger.info(f"Found {len(missing)} members who have not requested a spot.")
+
+    for member in missing:
+        logger.info(
+            f"Missing {member['Medlemsnr']} {member['Förnamn']} {member['Efternamn']} ({member['Längd (båt)']} x {member['Bredd']})."
+        )
+
+    emails = [member["Epost 1"] for member in missing if "Epost 1" in member]
+    logger.info(f"Found {len(emails)} email addresses for missing members.")
+
+    # Copy emails to clipboard
+    try:
+        pyperclip.copy(",".join(emails))
+        logger.info(f"Copied {len(emails)} email addresses to clipboard")
+    except Exception as e:
+        logger.error(f"Failed to copy emails to clipboard: {e}")
+        logger.info(f"Email addresses: {emails}")
+
+
 if __name__ == "__main__":
     args = parseargs()
     colors = define_colors("templates/colors.json")
     logger = setup_logger("spots", "INFO")
 
     fh = FileHelper(logger)
+    members_source = fh.make_filename(args.members, dirs=["boatinfo"])
     ex_members_source = fh.make_filename(args.exmembers, dirs=["boatinfo"])
     on_land_source = fh.make_filename(args.onland, dirs=["boatinfo"])
+    request_source = fh.make_filename(args.requests, dirs=["boatinfo"])
     boats = read_and_process_input(
-        request_source=fh.make_filename(args.requests, dirs=["boatinfo"]),
-        members_source=fh.make_filename(args.members, dirs=["boatinfo"]),
+        request_source=request_source,
+        members_source=members_source,
         on_land_source=on_land_source,
         scheduled_source=fh.make_filename(args.scheduled, dirs=["boatinfo"]),
         updateboat=args.updateboat,
     )
 
-    ex_members = member_left_club(ex_members_source)
-    already_there = members_on_land(on_land_source)
+    ex_members = read_ex_members(ex_members_source)
+    already_there = read_members_on_land(on_land_source)
 
     if args.updateboat:
         logger.info(f"Filtering boats on {args.updateboat}")
         boats = [b for b in boats if b["member"] == int(args.updateboat)]
 
-    powerpoint_filename = fh.make_filename(args.file, dirs=["templates"])
-    print(powerpoint_filename)
+    powerpoint_filename = fh.make_filename(args.file, dirs=["stage", "templates"])
+    logger.info(f"PowerPoint file path: {powerpoint_filename}")
 
     ppt = fh.read_pptx_file(powerpoint_filename)
     map_slide = ppt.slides[0]
@@ -575,3 +650,10 @@ if __name__ == "__main__":
         logger.error(f"Could not save file '{args.outfile}'")
         logger.error("File is open in another application")
         exit(1)
+
+    send_reminders(
+        memberfile=members_source,
+        request_source=request_source,
+        on_land_source=on_land_source,
+        ex_members=ex_members,
+    )
