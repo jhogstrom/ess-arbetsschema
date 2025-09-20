@@ -343,7 +343,7 @@ def send_emails(next_date: str, sheet_id: str | None):
     all_emails.extend(_[2] for _ in drivers[1:] if _[0] == next_date)
     logger.info(f"Emails to send for {next_date}: {len(all_emails)}")
 
-    with open("templates/email-template.md", encoding="utf-8") as f:
+    with open("templates/email-template.html", encoding="utf-8") as f:
         content = f.read()
     content = content.replace("{date}", next_date)
     content = content.replace("{varvschef}", os.getenv("VARVSCHEF", ""))

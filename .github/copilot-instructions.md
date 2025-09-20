@@ -16,6 +16,7 @@ Follow the settings in flake8. Reformat files as necessary. Use type hints. Stop
 - Use flake8 configuration for linting rules
 - Format code with Black or similar formatter
 - Ask for clarification when requirements are unclear or ambiguous
+- Strings should be enclosed using double quotes unless single quotes are necessary to avoid escaping.
 
 ## Testing Requirements
 Write code that is easy to test and include test cases when appropriate.

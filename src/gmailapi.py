@@ -109,8 +109,14 @@ def gmail_send_message(
         service = build("gmail", "v1", credentials=creds)
         message = EmailMessage()
 
-        # Set content - EmailMessage handles UTF-8 encoding automatically
-        message.set_content(content)
+        # Convert plain text to HTML to preserve line formatting
+        html_content = content.replace("\n", "<br>")
+        html_content = f'<html><body><pre style="font-family: Arial, sans-serif; white-space: pre-wrap;">{html_content}</pre></body></html>'
+
+        # Use HTML content type to avoid automatic line wrapping
+        message.set_payload(html_content.encode("utf-8"))
+        message.set_charset("utf-8")
+        message.set_type("text/html")
 
         message["To"] = ",".join(rec_to)
         message["Cc"] = ",".join(rec_cc) if rec_cc else ""
@@ -148,7 +154,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    with open("templates/email-template.md", encoding="utf-8") as f:
+    with open("templates/email-template.html", encoding="utf-8") as f:
         content = f.read()
 
     res = gmail_send_message(
@@ -156,8 +162,8 @@ if __name__ == "__main__":
             "jspr.hgstrm@gmail.com",
             # "jspr.hgstrm+test@gmail.com",
         ],
-        rec_cc=["varvschef@edsvikensss.se"],
-        rec_bcc=["jspr.hgstrm+bcc@gmail.com"],
+        # rec_cc=["varvschef@edsvikensss.se"],
+        # rec_bcc=["jspr.hgstrm+bcc@gmail.com"],
         subject="Nästa upptagning/ESS",
         content=content,
         logger=logger,
@@ -165,6 +171,6 @@ if __name__ == "__main__":
             "stage/Förarschema ESS 2025-09-21.pptx",
             "stage/Förarschema ESS 2025-09-21.xlsx",
         ],
-        dry_run=True,
+        dry_run=False,
     )
     pprint(res)
