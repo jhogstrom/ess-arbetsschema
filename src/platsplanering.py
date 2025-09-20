@@ -313,16 +313,21 @@ def get_boats(
 
     requests: List[dict] = [b for b in members if b["Medlemsnr"] in requested_spots]
     for member in requests:
-        member["member"] = int(member.pop("Medlemsnr"))
-        member["length"] = float(member.pop("Längd (båt)").replace(",", ".")) + 1
-        # add 1m to width
-        w = float(member.pop("Bredd").replace(",", ".")) + 1
-        # Round width up to nearest .0 or .5
-        w = math.ceil(w * 2) / 2
-        member["width"] = w
-        # boat['name'] = f"{boat.pop('Förnamn')[0]} {boat.pop('Efternamn')}\n({boat.pop('Modell')})"
-        member["name"] = f"{member.pop('Efternamn')}"
-        member["requested"] = member["member"] not in no_spot_requested
+        try:
+            member["member"] = int(member.pop("Medlemsnr"))
+            member["length"] = float(member.pop("Längd (båt)").replace(",", ".")) + 1
+            # add 1m to width
+            w = float(member.pop("Bredd").replace(",", ".")) + 1
+            # Round width up to nearest .0 or .5
+            w = math.ceil(w * 2) / 2
+            member["width"] = w
+            # boat['name'] = f"{boat.pop('Förnamn')[0]} {boat.pop('Efternamn')}\n({boat.pop('Modell')})"
+            member["name"] = f"{member.pop('Efternamn')}"
+            member["requested"] = member["member"] not in no_spot_requested
+        except ValueError as e:
+            logger.error(f"Could not parse boat for member {member}: {e}")
+            pprint(member)
+            raise e
 
     # Make boats unique by member id
     result = list({boat["member"]: boat for boat in requests}.values())
@@ -474,7 +479,7 @@ def remove_shape_by_name(slide, shape_name: str) -> bool:
     return False
 
 
-def update_revision(shape, revision: str = "1", boats: list | None = None):
+def update_revision(revision_shape, revision: str, boat_count: int):
     """
     Update the revision shape with the current date and time.
 
@@ -483,10 +488,10 @@ def update_revision(shape, revision: str = "1", boats: list | None = None):
     """
     text = [
         f"Revision {revision}",
-        f"Båtar: {len(boats)}",
+        f"Båtar: {boat_count}",
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
     ]
-    shape.text = "\n".join(text)
+    revision_shape.text = "\n".join(text)
 
 
 def update_title(shape, title: str):
@@ -603,10 +608,10 @@ def send_reminders(
         logger.info(f"Email addresses: {emails}")
 
 
+logger = setup_logger("spots", "INFO")
 if __name__ == "__main__":
     args = parseargs()
     colors = define_colors("templates/colors.json")
-    logger = setup_logger("spots", "INFO")
 
     fh = FileHelper(logger)
     members_source = fh.make_filename(args.members, dirs=["boatinfo"])
@@ -637,7 +642,11 @@ if __name__ == "__main__":
     add_boats_to_map(
         slide=map_slide, boats=boats, ex_members=ex_members, already_there=already_there
     )
-    update_revision(get_shape(map_slide, "Revision", logger), revision="1", boats=boats)
+
+    boat_count = len(boats)
+    update_revision(
+        get_shape(map_slide, "Revision", logger), revision="1", boat_count=boat_count
+    )
     year = datetime.datetime.now().year
     update_title(
         get_shape(map_slide, "Rubrik", logger), title=f"Varvskarta ESS {year}/{year+1}"
