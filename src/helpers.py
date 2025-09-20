@@ -91,6 +91,22 @@ class FileHelper:
 
 
 def setup_logger(logger_name: str, level: str | None = None) -> logging.Logger:
+    """
+    Returns an existing logger with the given name if it exists, otherwise continues to set up a new logger.
+
+    Args:
+        logger_name (str): The name of the logger to retrieve or create.
+        level (str | None, optional): Logging level to set. Defaults to None.
+
+    Returns:
+        logging.Logger: The logger instance.
+
+    Example:
+        >>> logger = setup_logger("my_logger", "DEBUG")
+        >>> logger.info("Logger is ready")
+    """
+    if logger_name in logging.Logger.manager.loggerDict:
+        return logging.getLogger(logger_name)
     logger = logging.getLogger(logger_name)
     level = level or "INFO"
     logger.setLevel(level)
@@ -122,6 +138,8 @@ def get_shape(slide, shape_name: str, logger: logging.Logger) -> Optional[Any]:
             logger.debug(f"Found shape '{shape_name}'.")
             return shape
     for shape in slide.shapes:
+        if not hasattr(shape, "text"):
+            continue
         if any(_ in shape.text.split() for _ in shape_name.split()):
             logger.debug(f"Found shape {shape.name} matching {shape_name}")
             return shape
