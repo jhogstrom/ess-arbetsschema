@@ -345,6 +345,8 @@ def send_emails(next_date: str, sheet_id: str | None):
 
     with open("templates/email-template.md", encoding="utf-8") as f:
         content = f.read()
+    content = content.replace("{date}", next_date)
+    content = content.replace("{varvschef}", os.getenv("VARVSCHEF", ""))
 
     email_receiver = os.getenv("EMAIL_RECEIVER", "")
 
