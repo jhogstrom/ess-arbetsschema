@@ -39,4 +39,9 @@ schema: prereqs
 		--outdir $(STAGE) \
 		--template templates/template.xlsx \
 		--header "Schema $(CLUBNAME)" \
+		--driversheetid $(DRIVERSCHEDULE) \
 		--mapfile "varvskarta*.pptx"
+
+emails: SHEET_ID=$(EMAIL_SHEET_ID)
+emails: prereqs
+	$(PYTHON) src/generate_email.py  --sheetid $(SHEET_ID)

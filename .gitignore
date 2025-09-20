@@ -12,3 +12,5 @@ googletest*
 # Credentials
 token.json
 google-credentials.json
+client_secret_296188760248-ufr8fhvi0v0nccd6a698ts4ccsqpa2ip.apps.googleusercontent.com.json
+oldtoken.json

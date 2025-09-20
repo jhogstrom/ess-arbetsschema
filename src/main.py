@@ -1,7 +1,7 @@
 import argparse
 import datetime
 import os
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import openpyxl
 import pandas as pd
@@ -10,6 +10,8 @@ from openpyxl.styles import Alignment, Border, Side
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 
+from gmailapi import gmail_send_message
+from googleapi import get_google_sheet, get_sheet_titles
 from helpers import FileHelper, color_boats, setup_logger
 
 # Load .env file
@@ -41,6 +43,9 @@ def parseargs():
     parser.add_argument(
         "--mapfile", default="varvskarta*.pptx", help="Map file (powerpoint)"
     )
+    parser.add_argument(
+        "--driversheetid", help="Google Sheet ID to read the driver schedule from"
+    )
     return parser.parse_args()
 
 
@@ -63,6 +68,18 @@ def get_dates(schedule: pd.DataFrame, schedule_name: str) -> list:
         and schedule_name.upper() in row["Schema"].upper()
     }
     return sorted(result)
+
+
+emails: Dict[str, List[str]] = {}
+missing_foreman: List[str] = []
+
+
+def remove_shapes(slide, shapes_to_remove, logger):
+    for shape in slide.shapes:
+        if shape.name in shapes_to_remove:
+            logger.debug(f"Removing shape: {shape.name}")
+            sp = shape._element
+            sp.getparent().remove(sp)
 
 
 def make_report(
@@ -96,6 +113,15 @@ def make_report(
         key=lambda x: x["Pass tid"],
     )
 
+    foreman_rows = sorted(
+        [
+            _
+            for i, _ in schedule.iterrows()
+            if row_filter(_, date, data_settings["foreman_schedule"], data_settings)
+        ],
+        key=lambda x: x["Pass tid"],
+    )
+
     # Load the template Excel file
     wb = openpyxl.load_workbook(template)
 
@@ -120,6 +146,7 @@ def make_report(
         cell.alignment = Alignment(wrap_text=True)
 
     boats = []
+    todays_emails = []
     # Write the matchrows to the sheet
     sheet.insert_rows(start_row, len(boatrows))
     result = len(boatrows)
@@ -157,6 +184,8 @@ def make_report(
         )
         settings = ", ".join(_ for _ in [esk, dusk1, dusk2] if _ is not None)
         add_cell(sheet, i, 8, settings)
+        email = row[data_settings["email_column"]]
+        todays_emails.append(email)
 
     sheet.insert_rows(start_row + len(boatrows) + 4, len(work_rows))
     for i, row in enumerate(work_rows, start=start_row + len(boatrows) + 4):
@@ -165,6 +194,23 @@ def make_report(
         add_cell(sheet, i, 2, namn[1][:-1])
         add_cell(sheet, i, 3, namn[0].strip())
         add_cell(sheet, i, 4, str(int(row["Mobil"])))
+
+        todays_emails.append(row[data_settings["email_column"]])
+
+    foreman_found = False
+    for i, row in enumerate(foreman_rows, start=start_row + len(boatrows) + 4):
+        add_cell(sheet, i, 6, row["Pass tid"])
+        namn = row["Medlem (fullt namn)"].split("(")
+        add_cell(sheet, i, 7, namn[0].strip())
+        add_cell(sheet, i, 8, str(int(row["Mobil"])))
+
+        todays_emails.append(row[data_settings["email_column"]])
+        foreman_found = True
+
+    if not foreman_found:
+        logger.warning(f"No foreman found for {date}!")
+        add_cell(sheet, start_row + len(boatrows) + 4, 6, "SAKNAS")
+        missing_foreman.append(date)
 
     sheet.cell(1, 1, f"{header} {date}")
     sheet.cell(
@@ -180,11 +226,21 @@ def make_report(
         color_boats(
             slide, boats, RGBColor(255, 255, 26), "scheduled", logger, terse=False
         )
+        shapes_to_remove = [
+            "Anteckning 1",
+            "Anteckning 2",
+            "Anteckning 3",
+        ]
+        remove_shapes(slide, shapes_to_remove, logger)
+
         map_pptx.save(map_output_filename)
     logger.info(f"Map written to '{output_filename}'")
     logger.info(
         f"== Summary '{header} {date}': {len(boatrows)} Arbetspass: {len(work_rows)}"
     )
+
+    emails[date] = sorted(set(todays_emails))
+
     return result
 
 
@@ -276,6 +332,36 @@ def generate_reports(
     return stats
 
 
+def send_emails(next_date: str, sheet_id: str | None):
+    all_emails = emails[next_date]
+
+    if sheet_id is not None:
+        drivers = get_google_sheet(sheet_id, get_sheet_titles(sheet_id)[0])
+    else:
+        drivers = []
+
+    all_emails.extend(_[2] for _ in drivers[1:] if _[0] == next_date)
+    logger.info(f"Emails to send for {next_date}: {len(all_emails)}")
+
+    with open("templates/email-template.md", encoding="utf-8") as f:
+        content = f.read()
+
+    email_receiver = os.getenv("EMAIL_RECEIVER", "")
+
+    gmail_send_message(
+        rec_to=[email_receiver],
+        rec_bcc=all_emails,
+        content=content,
+        subject=f"Nästa upptagning/ESS - {next_date}",
+        attachments=[
+            f"stage/Förarschema ESS {next_date}.pptx",
+            f"stage/Förarschema ESS {next_date}.xlsx",
+        ],
+        logger=logger,
+        dry_run=True,
+    )
+
+
 if __name__ == "__main__":
     args = parseargs()
     logger = setup_logger("sched", "INFO")
@@ -284,12 +370,15 @@ if __name__ == "__main__":
     schedule_filename = fh.make_filename(args.file, dirs=["report", ".reports/reports"])
     logger.info(f"Reading schedule file '{schedule_filename}'")
     schedule = pd.read_excel(schedule_filename)
-    BOAT_SCHEDULE = "Sjösättning 2025"
-    WORK_SCHEDULE = "Arbetspass sjösättning 2025"
+    current_year = datetime.datetime.now().year
+    BOAT_SCHEDULE = f"Torrsättning {current_year}"
+    WORK_SCHEDULE = f"Arbetspass torrsättning {current_year}"
+    FOREMAN_SCHEDULE = f"Förmanspass till torrsättning {current_year} (för styrelsen)"
 
     data_settings = {
         "boat_schedule": BOAT_SCHEDULE,
         "work_schedule": WORK_SCHEDULE,
+        "foreman_schedule": FOREMAN_SCHEDULE,
         "schedule_column": "Schema",
         "date_column": "Datum",
         "name_column": "Medlem (fullt namn)",
@@ -320,3 +409,8 @@ if __name__ == "__main__":
     logger.info("Antal båtar per dag")
     for k, v in stats.items():
         logger.info(f"  {k}: {v}")
+
+    send_emails(dates[0], args.driversheetid)
+
+    for d in missing_foreman:
+        logger.warning(f"No foreman assigned for {d}!")

@@ -26,7 +26,10 @@ from googleapiclient.errors import HttpError
 from helpers import setup_logger
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
+]
 
 TOKEN_CACHE_FILE = "token.json"
 CREDENTIALS_FILE = "google-credentials.json"
