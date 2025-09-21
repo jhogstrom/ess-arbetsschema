@@ -29,6 +29,7 @@ from helpers import setup_logger
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets.readonly",
     "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/drive.file",
 ]
 
 TOKEN_CACHE_FILE = "token.json"
@@ -44,11 +45,11 @@ __all__ = [
 
 
 def get_credentials():
-    """Retrieve and manage Google API credentials for accessing Google Sheets.
+    """Retrieve and manage Google API credentials.
 
-    This function handles the OAuth2 flow for Google Sheets API access. It loads
-    existing credentials from a token file, refreshes them if expired, or initiates
-    a new authorization flow if needed.
+    This function handles the OAuth2 flow for Google API access. It loads
+    existing credentials from a token file, refreshes them if expired,
+    or initiates a new authorization flow if needed.
 
     Returns:
         google.oauth2.credentials.Credentials: Valid Google API credentials

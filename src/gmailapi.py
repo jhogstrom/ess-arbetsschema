@@ -157,13 +157,14 @@ if __name__ == "__main__":
     with open("templates/email-template.html", encoding="utf-8") as f:
         content = f.read()
 
+    rec_cc = os.getenv("REC_CC", "").split(",")
+    rec_bcc = os.getenv("REC_BCC", "").split(",")
+    rec_to = os.getenv("REC_TO", "").split(",")
+
     res = gmail_send_message(
-        rec_to=[
-            "jspr.hgstrm@gmail.com",
-            # "jspr.hgstrm+test@gmail.com",
-        ],
-        # rec_cc=["varvschef@edsvikensss.se"],
-        # rec_bcc=["jspr.hgstrm+bcc@gmail.com"],
+        rec_to=rec_to,
+        rec_cc=rec_cc,
+        rec_bcc=rec_bcc,
         subject="Nästa upptagning/ESS",
         content=content,
         logger=logger,

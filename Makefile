@@ -6,7 +6,7 @@ VENV=source .venv/Scripts/activate;
 endif
 PYTHON:=$(VENV) $(PYTHON)
 KARTVERKTYG=$(PYTHON) src/platsplanering.py
-SCHEMAVERKTYG=$(PYTHON) src/main.py
+SCHEMAVERKTYG=$(PYTHON) src/schema.py
 STAGE=stage
 CLUBNAME?=ESS
 UV=$(if $(CI),,uv)

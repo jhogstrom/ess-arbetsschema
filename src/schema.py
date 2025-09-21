@@ -10,7 +10,9 @@ from openpyxl.styles import Alignment, Border, Side
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 
-from gmailapi import gmail_send_message
+from driveapi import upload_to_folder
+
+# from gmailapi import gmail_send_message
 from googleapi import get_google_sheet, get_sheet_titles
 from helpers import FileHelper, color_boats, setup_logger
 
@@ -88,6 +90,8 @@ def make_report(
     schedule: pd.DataFrame,
     output_filename: str,
     map_output_filename: str,
+    email_output_filename: str,
+    drivers,
     template: str,
     header: str,
     map_pptx: Optional[Presentation] = None,
@@ -221,6 +225,8 @@ def make_report(
     wb.save(output_filename)
     logger.info(f"Report written to '{output_filename}'")
 
+    # Update the map if provided
+    # and save it to the map_output_filename
     if map_pptx is not None:
         slide = map_pptx.slides[0]
         color_boats(
@@ -235,11 +241,27 @@ def make_report(
 
         map_pptx.save(map_output_filename)
     logger.info(f"Map written to '{output_filename}'")
+
+    # Write the email list to a file
+    # Add also all drivers for that date
+    todays_emails.extend(_[2] for _ in drivers[1:] if _[0] == date)
+    with open(email_output_filename, "w", encoding="utf-8") as f:
+        for e in sorted(set(todays_emails)):
+            f.write(e + "\n")
+
     logger.info(
         f"== Summary '{header} {date}': {len(boatrows)} Arbetspass: {len(work_rows)}"
     )
 
     emails[date] = sorted(set(todays_emails))
+
+    # Upload the files to Google Drive
+    folder_id = os.getenv("PARENT_FOLDER_ID", "")
+    upload_to_folder(
+        folder_id=folder_id,
+        files=[output_filename, map_output_filename, email_output_filename],
+        logger=logger,
+    )
 
     return result
 
@@ -296,6 +318,7 @@ def generate_reports(
     dates: list[str],
     schedule: pd.DataFrame,
     data_settings: dict,
+    drivers,
     outdir: str,
     header: str,
     mapfile: str,
@@ -307,6 +330,7 @@ def generate_reports(
     for d in dates:
         output_filename = make_output_filename(outdir, d, "xlsx")
         map_output_filename = make_output_filename(outdir, d, "pptx")
+        email_output_filename = make_output_filename(outdir, d, "email.txt")
 
         if (
             datetime.datetime.strptime(d, "%Y-%m-%d").date()
@@ -319,8 +343,10 @@ def generate_reports(
                 date=d,
                 header=header,
                 schedule=schedule,
+                drivers=drivers,
                 output_filename=output_filename,
                 map_output_filename=map_output_filename,
+                email_output_filename=email_output_filename,
                 template=template,
                 data_settings=data_settings,
                 map_pptx=original_map_ppt,
@@ -332,15 +358,17 @@ def generate_reports(
     return stats
 
 
-def send_emails(next_date: str, sheet_id: str | None):
-    all_emails = emails[next_date]
+def get_drivers(sheet_id):
+    if sheet_id is None:
+        return []
+    return get_google_sheet(sheet_id, get_sheet_titles(sheet_id)[0])
 
-    if sheet_id is not None:
-        drivers = get_google_sheet(sheet_id, get_sheet_titles(sheet_id)[0])
-    else:
-        drivers = []
 
-    all_emails.extend(_[2] for _ in drivers[1:] if _[0] == next_date)
+def send_emails(next_date: str):
+    with open(f"stage/Förarschema ESS {next_date}.email.txt", "rb") as f:
+        all_emails = f.readlines()
+
+    # all_emails.extend(_[2] for _ in drivers[1:] if _[0] == next_date)
     logger.info(f"Emails to send for {next_date}: {len(all_emails)}")
 
     with open("templates/email-template.html", encoding="utf-8") as f:
@@ -348,20 +376,20 @@ def send_emails(next_date: str, sheet_id: str | None):
     content = content.replace("{date}", next_date)
     content = content.replace("{varvschef}", os.getenv("VARVSCHEF", ""))
 
-    email_receiver = os.getenv("EMAIL_RECEIVER", "")
+    # email_receiver = os.getenv("EMAIL_RECEIVER", "")
 
-    gmail_send_message(
-        rec_to=[email_receiver],
-        rec_bcc=all_emails,
-        content=content,
-        subject=f"Nästa upptagning/ESS - {next_date}",
-        attachments=[
-            f"stage/Förarschema ESS {next_date}.pptx",
-            f"stage/Förarschema ESS {next_date}.xlsx",
-        ],
-        logger=logger,
-        dry_run=True,
-    )
+    # gmail_send_message(
+    #     rec_to=[email_receiver],
+    #     rec_bcc=all_emails,
+    #     content=content,
+    #     subject=f"Nästa upptagning/ESS - {next_date}",
+    #     attachments=[
+    #         f"stage/Förarschema ESS {next_date}.pptx",
+    #         f"stage/Förarschema ESS {next_date}.xlsx",
+    #     ],
+    #     logger=logger,
+    #     dry_run=True,
+    # )
 
 
 if __name__ == "__main__":
@@ -391,10 +419,12 @@ if __name__ == "__main__":
     dates = get_dates(schedule, BOAT_SCHEDULE)
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
+    drivers = get_drivers(args.driversheetid)
     stats = generate_reports(
         dates=dates,
         schedule=schedule,
         data_settings=data_settings,
+        drivers=drivers,
         outdir=args.outdir,
         header=args.header,
         mapfile=args.mapfile,
@@ -412,7 +442,7 @@ if __name__ == "__main__":
     for k, v in stats.items():
         logger.info(f"  {k}: {v}")
 
-    send_emails(dates[0], args.driversheetid)
+    send_emails(dates[0])
 
     for d in missing_foreman:
         logger.warning(f"No foreman assigned for {d}!")
