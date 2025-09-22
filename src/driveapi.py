@@ -17,7 +17,7 @@ def _upload_file(file: str, folder_id: str, service, logger: logging.Logger) -> 
     """
     Upload a file to the specified folder and prints file ID, folder ID
     Args: Id of the folder
-    Returns: ID of the file uploaded
+    Returns: Nothing
     """
     try:
         if not os.path.exists(file):
@@ -29,7 +29,7 @@ def _upload_file(file: str, folder_id: str, service, logger: logging.Logger) -> 
             mime_type = "application/octet-stream"
         media = MediaFileUpload(file, mimetype=mime_type, resumable=False)
         # pylint: disable=maybe-no-member
-        uploaded_file = (
+        (
             service.files()
             .create(
                 body=file_metadata,
@@ -39,7 +39,7 @@ def _upload_file(file: str, folder_id: str, service, logger: logging.Logger) -> 
             )
             .execute()
         )
-        logger.info(f'File ID: "{uploaded_file.get("id")}".')
+        logger.info(f'Uploaded file: "{file}".')
     except HttpError as error:
         logger.error(f"An error occurred: {error}")
         return
@@ -60,7 +60,7 @@ def upload_to_folder(
     *, folder_id: str, files: List[str], logger: logging.Logger
 ) -> None:
     """
-    Upload files to the specified folder using concurrent futures.
+    Upload files to the specified folder.
 
     Args:
         folder_id: ID of the Google Drive folder to upload to
@@ -68,14 +68,10 @@ def upload_to_folder(
         logger: Logger instance for logging operations
 
     Returns:
-        List[Future]: List of Future objects for the upload tasks that can be
-        joined later to ensure all uploads complete
+        None
 
     Example:
-        >>> futures = upload_to_folder(folder_id="abc123", files=["file1.txt"], logger=logger)
-        >>> # Do other work...
-        >>> for future in futures:
-        ...     future.result()  # Wait for completion
+        >>> upload_to_folder(folder_id="abc123", files=["file1.txt"], logger=logger)
     """
     service = get_service()
 

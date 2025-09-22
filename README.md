@@ -6,6 +6,38 @@ Detta program genererar arbetsschema och sjösättningsschema från en rapport F
 Rapporten läses in, ett set av datum för året skapas, varefter en rapport genereras per
 dag definierad som sjösättningsdag, såväl arbetspass som sjösättningar
 
+# Makefile Targets
+
+Projektet använder en Makefile för att förenkla vanliga arbetsflöden. Följande targets är tillgängliga:
+
+## Huvudfunktioner
+- **`make karta`** - Genererar varvskarta med platsplanering för båtar
+- **`make schema`** - Genererar arbetsscheman för torrsättning från BAS-rapport
+- **`make sendmail`** - Skickar epost med schema och varvskarta till berörda medlemmar
+- **`make upload`** - Laddar upp genererade filer till Google Drive
+
+## Förberedelser
+- **`make prereqs`** - Installerar nödvändiga beroenden och skapar kataloger
+
+## Exempel på användning
+```bash
+# Generera schema och ladda upp till Drive
+make schema upload
+
+# Skicka epost med senaste genererade schema
+make sendmail
+
+# Generera karta baserat på anmälningar
+make karta
+```
+
+## Miljövariabler
+Makefile använder miljövariabler från `.env`-fil för konfiguration:
+- `EMAIL_RECEIVER` - Mottagare för schema-epost
+- `VARVSCHEF` - Namn på varvschef för epost-mall
+- `DRIVERSCHEDULE` - Google Sheets ID för förarschema
+- `PARENT_FOLDER_ID` - Google Drive mapp för filuppladdning
+
 
 # Platsplanering
 ```

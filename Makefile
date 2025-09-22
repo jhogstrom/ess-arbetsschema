@@ -7,6 +7,8 @@ endif
 PYTHON:=$(VENV) $(PYTHON)
 KARTVERKTYG=$(PYTHON) src/platsplanering.py
 SCHEMAVERKTYG=$(PYTHON) src/schema.py
+UPLOADSCRIPT=$(PYTHON) src/uploadfiles.py
+SENDMAILSCRIPT=$(PYTHON) src/sendemail.py
 STAGE=stage
 CLUBNAME?=ESS
 UV=$(if $(CI),,uv)
@@ -42,6 +44,15 @@ schema: prereqs
 		--driversheetid $(DRIVERSCHEDULE) \
 		--mapfile "varvskarta*.pptx"
 
-emails: SHEET_ID=$(EMAIL_SHEET_ID)
-emails: prereqs
-	$(PYTHON) src/generate_email.py  --sheetid $(SHEET_ID)
+# emails: SHEET_ID=$(EMAIL_SHEET_ID)
+# emails: prereqs
+# 	$(PYTHON) src/generate_email.py  --sheetid $(SHEET_ID)
+
+sendmail: prereqs
+	$(SENDMAILSCRIPT) \
+		--receiver $(EMAIL_RECEIVER) \
+		--template templates/email-template.html \
+		--replacement "varvschef=$(VARVSCHEF)"
+
+upload: prereqs
+	$(UPLOADSCRIPT)

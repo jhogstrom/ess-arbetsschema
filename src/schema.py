@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import json
 import os
 from typing import Dict, List, Optional
 
@@ -10,9 +11,6 @@ from openpyxl.styles import Alignment, Border, Side
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 
-from driveapi import upload_to_folder
-
-# from gmailapi import gmail_send_message
 from googleapi import get_google_sheet, get_sheet_titles
 from helpers import FileHelper, color_boats, setup_logger
 
@@ -74,6 +72,7 @@ def get_dates(schedule: pd.DataFrame, schedule_name: str) -> list:
 
 emails: Dict[str, List[str]] = {}
 missing_foreman: List[str] = []
+generated_files: Dict[str, List[str]] = {}
 
 
 def remove_shapes(slide, shapes_to_remove, logger):
@@ -165,7 +164,8 @@ def make_report(
         # Medlemsnamn
         add_cell(sheet, i, 3, namn[0].strip())
         add_cell(sheet, i, 4, str(int(row["Mobil"])))
-        add_cell(sheet, i, 5, row["Plats"])
+        plats = [_.strip() for _ in str(row["Plats"]).split(",")]
+        add_cell(sheet, i, 5, ", ".join(set(plats)))
         add_cell(sheet, i, 6, row["Modell"])
         kommentar = (
             row["Kommentar medlem"] if not pd.isna(row["Kommentar medlem"]) else ""
@@ -255,13 +255,12 @@ def make_report(
 
     emails[date] = sorted(set(todays_emails))
 
-    # Upload the files to Google Drive
-    folder_id = os.getenv("PARENT_FOLDER_ID", "")
-    upload_to_folder(
-        folder_id=folder_id,
-        files=[output_filename, map_output_filename, email_output_filename],
-        logger=logger,
-    )
+    # Records the files that have been generated
+    generated_files[date] = [
+        output_filename,
+        map_output_filename,
+        email_output_filename,
+    ]
 
     return result
 
@@ -354,6 +353,7 @@ def generate_reports(
         else:
             ensure_delete(output_filename)
             ensure_delete(map_output_filename)
+            ensure_delete(email_output_filename)
             logger.debug(f"**\n** Skipping passed date {d}\n**")
     return stats
 
@@ -362,34 +362,6 @@ def get_drivers(sheet_id):
     if sheet_id is None:
         return []
     return get_google_sheet(sheet_id, get_sheet_titles(sheet_id)[0])
-
-
-def send_emails(next_date: str):
-    with open(f"stage/Förarschema ESS {next_date}.email.txt", "rb") as f:
-        all_emails = f.readlines()
-
-    # all_emails.extend(_[2] for _ in drivers[1:] if _[0] == next_date)
-    logger.info(f"Emails to send for {next_date}: {len(all_emails)}")
-
-    with open("templates/email-template.html", encoding="utf-8") as f:
-        content = f.read()
-    content = content.replace("{date}", next_date)
-    content = content.replace("{varvschef}", os.getenv("VARVSCHEF", ""))
-
-    # email_receiver = os.getenv("EMAIL_RECEIVER", "")
-
-    # gmail_send_message(
-    #     rec_to=[email_receiver],
-    #     rec_bcc=all_emails,
-    #     content=content,
-    #     subject=f"Nästa upptagning/ESS - {next_date}",
-    #     attachments=[
-    #         f"stage/Förarschema ESS {next_date}.pptx",
-    #         f"stage/Förarschema ESS {next_date}.xlsx",
-    #     ],
-    #     logger=logger,
-    #     dry_run=True,
-    # )
 
 
 if __name__ == "__main__":
@@ -442,7 +414,12 @@ if __name__ == "__main__":
     for k, v in stats.items():
         logger.info(f"  {k}: {v}")
 
-    send_emails(dates[0])
+    filedata = {
+        "parent_folder_id": os.getenv("PARENT_FOLDER_ID", ""),
+        "files": generated_files,
+    }
+    with open("stage/generated_files.json", "w", encoding="utf-8") as f:
+        json.dump(filedata, f, indent=2, ensure_ascii=False)
 
     for d in missing_foreman:
         logger.warning(f"No foreman assigned for {d}!")
