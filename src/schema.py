@@ -27,24 +27,46 @@ default_outdir = os.getenv("OUTDIR")
 def parseargs():
     # Parse command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("-f", "--file", default=default_file, help="Excel file to read")
     parser.add_argument(
-        "-d", "--date", default=default_date, help="Date to generate report for"
+        "-f",
+        "--file",
+        default=default_file,
+        metavar="<file>",
+        help="Excel file to read.",
     )
     parser.add_argument(
-        "-t", "--template", default=default_template, help="Template file to fill in"
+        "-d", "--date", default=default_date, help="Date to generate report for."
     )
     parser.add_argument(
-        "-o", "--outdir", default=default_outdir, help="Filename to write the output to"
+        "-t",
+        "--template",
+        default=default_template,
+        metavar="<file>",
+        help="Template file to fill in schedule.",
     )
     parser.add_argument(
-        "--header", default="Schema ESS", help="Name of worksheet header"
+        "-o",
+        "--outdir",
+        default=default_outdir,
+        metavar="<dir>",
+        help="Directory to write the output to.",
     )
     parser.add_argument(
-        "--mapfile", default="varvskarta*.pptx", help="Map file (powerpoint)"
+        "--header",
+        default="Schema ESS",
+        metavar="<str>",
+        help="Name of worksheet header.",
     )
     parser.add_argument(
-        "--driversheetid", help="Google Sheet ID to read the driver schedule from"
+        "--mapfile",
+        default="varvskarta*.pptx",
+        metavar="<file>",
+        help="Map file (powerpoint).",
+    )
+    parser.add_argument(
+        "--driversheetid",
+        metavar="<id>",
+        help="Google Sheet ID to read the driver schedule from",
     )
     return parser.parse_args()
 

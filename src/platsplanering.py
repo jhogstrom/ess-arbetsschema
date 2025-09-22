@@ -51,40 +51,55 @@ def parseargs():
     year = datetime.datetime.now().year
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--file", default="*karta*.pptx", help="PowerPoint file to read."
+        "--file",
+        default="*karta*.pptx",
+        metavar="<file>",
+        help="PowerPoint file to read.",
     )
     parser.add_argument(
         "--requests",
         default=f"Anmälningar {year}.xlsx",
-        help="Excel file with requests for spots.",
+        metavar="<file|sheetid>",
+        help="Excel file or Google Sheet ID with requests for spots.",
     )
     parser.add_argument(
         # "--boats", default="Båtmått*.xlsx", help="Excel file with boat information"
         "--members",
         default="Alla_medlemmar_inkl_båtinfo_*.xlsx",
+        metavar="<file>",
         help="Excel file with boat information.",
     )
     parser.add_argument(
         "--outfile",
         default=f"stage/varvskarta {year}.pptx",
+        metavar="<file>",
         help="Filename for output PowerPoint file.",
     )
     parser.add_argument(
         "--exmembers",
         default="boatinfo/ex-members.txt",
-        help="Filename with ex-members",
+        metavar="<file|sheetid>",
+        help="Filename or Google Sheet ID with ex-members.",
     )
     parser.add_argument(
         "--onland",
         default="boatinfo/sommarliggare.xlsx",
-        help="Excel file with members already on land.",
+        metavar="<file|sheetid>",
+        help="Excel file or Google Sheet ID with members already on land.",
     )
     parser.add_argument(
         "--scheduled",
         default="Torrsättning*.xlsx",
+        metavar="<file>",
         help="Report from BAS with scheduled members.",
     )
-    parser.add_argument("--updateboat", required=False, help="Update boat information")
+    parser.add_argument(
+        "--updateboat",
+        required=False,
+        metavar="<memberid>",
+        type=int,
+        help="Update boat information",
+    )
     return parser.parse_args()
 
 
