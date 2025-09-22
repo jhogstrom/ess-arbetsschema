@@ -9,7 +9,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
-from pptx import Presentation
+from pptx import presentation
 from pptx.dml.color import RGBColor
 
 from googleapi import get_google_sheet, get_sheet_titles
@@ -110,24 +110,9 @@ def _get_rows(schedule: pd.DataFrame, date: str, schedule_name: str) -> list:
     )
 
 
-def make_report(
-    *,
-    date: str,
-    schedule: pd.DataFrame,
-    output_filename: str,
-    map_output_filename: str,
-    email_output_filename: str,
-    drivers,
-    header: str,
-    map_pptx: Optional[Presentation] = None,
-    data_settings: dict,
-) -> int:
-    logger.info(f"Generating report for {date}")
-
-    boatrows = _get_rows(schedule, date, data_settings["boat_schedule"])
-    work_rows = _get_rows(schedule, date, data_settings["work_schedule"])
-    foreman_rows = _get_rows(schedule, date, data_settings["foreman_schedule"])
-
+def _make_excel_report(
+    boatrows, work_rows, foreman_rows, filename: str, *, header: str, date: str
+) -> None:
     # Create a new workbook and select the active sheet
     wb = openpyxl.Workbook()
     sheet = wb.active
@@ -185,14 +170,8 @@ def make_report(
     add_cell(sheet, 3, 6, "Båtmodell", width=20, header=True)
     add_cell(sheet, 3, 7, "Kommentar", width=30, header=True)
     add_cell(sheet, 3, 8, "Inställningar", width=15, header=True)
-
     # Specify the starting row and column
     next_row = 4
-
-    boats = []
-    todays_emails = []
-    # Write the matchrows to the sheet
-    result = len(boatrows)
     for i, row in enumerate(boatrows, start=next_row):
         next_row += 1
         add_cell(sheet, i, 1, row["Pass tid"])
@@ -201,7 +180,6 @@ def make_report(
         # Medlemsnummer
         id = int(namn[1][:-1])
         add_cell(sheet, i, 2, id)
-        boats.append(id)
         # Medlemsnamn
         add_cell(sheet, i, 3, namn[0].strip())
         add_cell(sheet, i, 4, " " + str(int(row["Mobil"])))
@@ -229,8 +207,6 @@ def make_report(
         )
         settings = ", ".join(_ for _ in [esk, dusk1, dusk2] if _ is not None)
         add_cell(sheet, i, 8, settings)
-        email = row[data_settings["email_column"]]
-        todays_emails.append(email)
 
     next_row += 2
     add_cell(sheet, next_row, 1, "Arbetspass", header=True)
@@ -250,56 +226,104 @@ def make_report(
         add_cell(sheet, i, 3, namn[0].strip())
         add_cell(sheet, i, 4, " " + str(int(row["Mobil"])))
 
-        todays_emails.append(row[data_settings["email_column"]])
-
-    foreman_found = False
     for i, row in enumerate(foreman_rows, start=next_row):
         add_cell(sheet, i, 6, row["Pass tid"])
         namn = row["Medlem (fullt namn)"].split("(")
         add_cell(sheet, i, 7, namn[0].strip())
         add_cell(sheet, i, 8, str(int(row["Mobil"])))
 
-        todays_emails.append(row[data_settings["email_column"]])
-        foreman_found = True
-
-    if not foreman_found:
+    if len(foreman_rows) == 0:
         logger.warning(f"No foreman found for {date}!")
-        add_cell(sheet, next_row, 7, "SAKNAS", border=False)
-        missing_foreman.append(date)
-
+        add_cell(sheet, next_row, 7, "INGEN FÖRMAN", border=False)
     # Save the workbook
-    wb.save(output_filename)
-    logger.info(f"Report written to '{output_filename}'")
+    wb.save(filename)
+    logger.info(f"Report written to '{filename}'")
 
-    # Update the map if provided
-    # and save it to the map_output_filename
-    if map_pptx is not None:
-        slide = map_pptx.slides[0]
-        color_boats(
-            slide, boats, RGBColor(255, 255, 26), "scheduled", logger, terse=False
-        )
-        shapes_to_remove = [
-            "Anteckning 1",
-            "Anteckning 2",
-            "Anteckning 3",
-        ]
-        remove_shapes(slide, shapes_to_remove, logger)
 
-        map_pptx.save(map_output_filename)
-    logger.info(f"Map written to '{output_filename}'")
-
-    # Write the email list to a file
+def _save_emails(
+    boatrows,
+    work_rows,
+    foreman_rows,
+    drivers,
+    filename: str,
+    *,
+    date: str,
+    email_column: str,
+) -> None:
+    todays_emails = [_[email_column] for _ in boatrows if not pd.isna(_[email_column])]
+    todays_emails.extend(
+        [_[email_column] for _ in work_rows if not pd.isna(_[email_column])]
+    )
+    todays_emails.extend(
+        [_[email_column] for _ in foreman_rows if not pd.isna(_[email_column])]
+    )
     # Add also all drivers for that date
     todays_emails.extend(_[2] for _ in drivers[1:] if _[0] == date)
-    with open(email_output_filename, "w", encoding="utf-8") as f:
+    # Write the email list to a file
+    with open(filename, "w", encoding="utf-8") as f:
         for e in sorted(set(todays_emails)):
             f.write(e + "\n")
+    logger.info(f"Email list written to '{filename}'")
+
+
+def _save_powerpoint(
+    boatrows, filename: str, map_pptx: Optional[presentation.Presentation]
+) -> None:
+    if map_pptx is None:
+        logger.warning("No map PPTX provided, skipping map generation.")
+        return
+
+    boats = [int(_["Medlemsnr"]) for _ in boatrows]
+    slide = map_pptx.slides[0]
+    color_boats(slide, boats, RGBColor(255, 255, 26), "scheduled", logger, terse=False)
+    shapes_to_remove = [
+        "Anteckning 1",
+        "Anteckning 2",
+        "Anteckning 3",
+    ]
+    remove_shapes(slide, shapes_to_remove, logger)
+
+    map_pptx.save(filename)
+    logger.info(f"Map written to '{filename}'")
+
+
+def make_report(
+    *,
+    date: str,
+    schedule: pd.DataFrame,
+    output_filename: str,
+    map_output_filename: str,
+    email_output_filename: str,
+    drivers,
+    header: str,
+    map_pptx: Optional[presentation.Presentation] = None,
+    data_settings: dict,
+) -> int:
+    logger.info(f"Generating report for {date}")
+
+    boatrows = _get_rows(schedule, date, data_settings["boat_schedule"])
+    work_rows = _get_rows(schedule, date, data_settings["work_schedule"])
+    foreman_rows = _get_rows(schedule, date, data_settings["foreman_schedule"])
+
+    _make_excel_report(
+        boatrows, work_rows, foreman_rows, output_filename, header=header, date=date
+    )
+    _save_emails(
+        boatrows,
+        work_rows,
+        foreman_rows,
+        drivers,
+        email_output_filename,
+        date=date,
+        email_column=data_settings["email_column"],
+    )
+    _save_powerpoint(boatrows, map_output_filename, map_pptx)
 
     logger.info(
         f"== Summary '{header} {date}': {len(boatrows)} Arbetspass: {len(work_rows)}"
     )
-
-    emails[date] = sorted(set(todays_emails))
+    if len(foreman_rows) == 0:
+        missing_foreman.append(date)
 
     # Records the files that have been generated
     generated_files[date] = [
@@ -308,7 +332,7 @@ def make_report(
         email_output_filename,
     ]
 
-    return result
+    return len(boatrows)
 
 
 def make_output_filename(outdir: str, date: str, suffix: str) -> str:
@@ -331,14 +355,14 @@ def find_balances(
     schedules = {}
 
     for row in schedule.iterrows():
-        d = row[1][data_settings["date_column"]]
+        d = str(row[1][data_settings["date_column"]])
         if (
             datetime.datetime.strptime(d, "%Y-%m-%d").date()
             < datetime.datetime.today().date()
         ):
             continue
         key = d + " " + row[1][data_settings["schedule_time_column"]]
-        if pd.isna(row[1][data_settings["name_column"]]):
+        if pd.isna(str(row[1][data_settings["name_column"]])):
             continue
         schema_type = row[1][data_settings["schedule_column"]]
         if schema_type not in [boat_schedule_name, work_schedule_name]:
