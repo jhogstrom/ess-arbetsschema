@@ -39,7 +39,6 @@ karta: prereqs
 schema: prereqs
 	$(SCHEMAVERKTYG) \
 		--outdir $(STAGE) \
-		--template templates/template.xlsx \
 		--header "Schema $(CLUBNAME)" \
 		--driversheetid $(DRIVERSCHEDULE) \
 		--mapfile "varvskarta*.pptx"

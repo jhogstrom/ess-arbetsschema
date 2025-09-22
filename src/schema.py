@@ -2,12 +2,13 @@ import argparse
 import datetime
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import openpyxl
 import pandas as pd
 from dotenv import load_dotenv
-from openpyxl.styles import Alignment, Border, Side
+from openpyxl.styles import Alignment, Border, Font, Side
+from openpyxl.utils import get_column_letter
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 
@@ -20,7 +21,6 @@ load_dotenv()
 # Get the defaults
 default_file = os.getenv("REPORT_FILE")
 default_date = os.getenv("REPORT_DATE")
-default_template = os.getenv("TEMPLATE")
 default_outdir = os.getenv("OUTDIR")
 
 
@@ -36,13 +36,6 @@ def parseargs():
     )
     parser.add_argument(
         "-d", "--date", default=default_date, help="Date to generate report for."
-    )
-    parser.add_argument(
-        "-t",
-        "--template",
-        default=default_template,
-        metavar="<file>",
-        help="Template file to fill in schedule.",
     )
     parser.add_argument(
         "-o",
@@ -66,6 +59,7 @@ def parseargs():
     parser.add_argument(
         "--driversheetid",
         metavar="<id>",
+        default=os.getenv("DRIVERSCHEDULE"),
         help="Google Sheet ID to read the driver schedule from",
     )
     return parser.parse_args()
@@ -105,6 +99,17 @@ def remove_shapes(slide, shapes_to_remove, logger):
             sp.getparent().remove(sp)
 
 
+def _get_rows(schedule: pd.DataFrame, date: str, schedule_name: str) -> list:
+    return sorted(
+        [
+            _
+            for i, _ in schedule.iterrows()
+            if row_filter(_, date, schedule_name, data_settings)
+        ],
+        key=lambda x: x["Pass tid"],
+    )
+
+
 def make_report(
     *,
     date: str,
@@ -113,48 +118,22 @@ def make_report(
     map_output_filename: str,
     email_output_filename: str,
     drivers,
-    template: str,
     header: str,
     map_pptx: Optional[Presentation] = None,
     data_settings: dict,
 ) -> int:
     logger.info(f"Generating report for {date}")
 
-    boatrows = sorted(
-        [
-            _
-            for i, _ in schedule.iterrows()
-            if row_filter(_, date, data_settings["boat_schedule"], data_settings)
-        ],
-        key=lambda x: x["Pass tid"],
-    )
+    boatrows = _get_rows(schedule, date, data_settings["boat_schedule"])
+    work_rows = _get_rows(schedule, date, data_settings["work_schedule"])
+    foreman_rows = _get_rows(schedule, date, data_settings["foreman_schedule"])
 
-    work_rows = sorted(
-        [
-            _
-            for i, _ in schedule.iterrows()
-            if row_filter(_, date, data_settings["work_schedule"], data_settings)
-        ],
-        key=lambda x: x["Pass tid"],
-    )
-
-    foreman_rows = sorted(
-        [
-            _
-            for i, _ in schedule.iterrows()
-            if row_filter(_, date, data_settings["foreman_schedule"], data_settings)
-        ],
-        key=lambda x: x["Pass tid"],
-    )
-
-    # Load the template Excel file
-    wb = openpyxl.load_workbook(template)
-
-    # Select the sheet where you want to add the matchrows
-    sheet = wb["Sheet1"]  # Replace 'Sheet1' with the name of your sheet
-
-    # Specify the starting row and column
-    start_row = 5
+    # Create a new workbook and select the active sheet
+    wb = openpyxl.Workbook()
+    sheet = wb.active
+    if sheet is None:
+        raise ValueError("No active sheet found in the workbook")
+    sheet.title = "Schema"
 
     # Define the border
     thin_border = Border(
@@ -164,28 +143,68 @@ def make_report(
         bottom=Side(style="thin"),
     )
 
-    def add_cell(sheet, row, col, value, wrap_text: bool = False):
+    def add_cell(
+        sheet,
+        row,
+        col,
+        value,
+        wrap_text: bool = False,
+        *,
+        width: Optional[float] = None,
+        header: bool = False,
+        border: bool = True,
+    ) -> Any:
         logger.debug(f"\tAdding cell {row}, {col}: {value}")
         cell = sheet.cell(row=row, column=col, value=value)
-        cell.border = thin_border
-        cell.alignment = Alignment(wrap_text=True)
+        if border:
+            cell.border = thin_border
+        cell.alignment = Alignment(wrap_text=wrap_text)
+        if width is not None:
+            sheet.column_dimensions[get_column_letter(col)].width = width
+        if header:
+            cell.font = Font(bold=True, size=13)
+        return cell
+
+    # Add the header
+    add_cell(sheet, 1, 1, f"{header} {date}", header=True, border=False)
+    add_cell(
+        sheet,
+        1,
+        7,
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        header=True,
+        border=False,
+    )
+
+    # Add the column headers
+    add_cell(sheet, 3, 1, "Pass", width=12, header=True)
+    add_cell(sheet, 3, 2, "#", width=6, header=True)
+    add_cell(sheet, 3, 3, "Namn", width=17, header=True)
+    add_cell(sheet, 3, 4, "Mobil", width=14, header=True)
+    add_cell(sheet, 3, 5, "Plats", width=6, header=True)
+    add_cell(sheet, 3, 6, "Båtmodell", width=20, header=True)
+    add_cell(sheet, 3, 7, "Kommentar", width=30, header=True)
+    add_cell(sheet, 3, 8, "Inställningar", width=15, header=True)
+
+    # Specify the starting row and column
+    next_row = 4
 
     boats = []
     todays_emails = []
     # Write the matchrows to the sheet
-    sheet.insert_rows(start_row, len(boatrows))
     result = len(boatrows)
-    for i, row in enumerate(boatrows, start=start_row):
+    for i, row in enumerate(boatrows, start=next_row):
+        next_row += 1
         add_cell(sheet, i, 1, row["Pass tid"])
         # Medlem (fullt namn) pattern: "<namn> (<medlemsnummer>)"
         namn = row["Medlem (fullt namn)"].split("(")
         # Medlemsnummer
-        id = namn[1][:-1]
+        id = int(namn[1][:-1])
         add_cell(sheet, i, 2, id)
         boats.append(id)
         # Medlemsnamn
         add_cell(sheet, i, 3, namn[0].strip())
-        add_cell(sheet, i, 4, str(int(row["Mobil"])))
+        add_cell(sheet, i, 4, " " + str(int(row["Mobil"])))
         plats = [_.strip() for _ in str(row["Plats"]).split(",")]
         add_cell(sheet, i, 5, ", ".join(set(plats)))
         add_cell(sheet, i, 6, row["Modell"])
@@ -213,18 +232,28 @@ def make_report(
         email = row[data_settings["email_column"]]
         todays_emails.append(email)
 
-    sheet.insert_rows(start_row + len(boatrows) + 4, len(work_rows))
-    for i, row in enumerate(work_rows, start=start_row + len(boatrows) + 4):
+    next_row += 2
+    add_cell(sheet, next_row, 1, "Arbetspass", header=True)
+    add_cell(sheet, next_row, 2, "#", header=True)
+    add_cell(sheet, next_row, 3, "Namn", header=True)
+    add_cell(sheet, next_row, 4, "Mobil", header=True)
+
+    add_cell(sheet, next_row, 6, "Förmanspass", header=True)
+    add_cell(sheet, next_row, 7, "Namn", header=True)
+    add_cell(sheet, next_row, 8, "Mobil", header=True)
+
+    next_row += 1
+    for i, row in enumerate(work_rows, start=next_row):
         add_cell(sheet, i, 1, row["Pass tid"])
         namn = row["Medlem (fullt namn)"].split("(")
-        add_cell(sheet, i, 2, namn[1][:-1])
+        add_cell(sheet, i, 2, int(namn[1][:-1]))
         add_cell(sheet, i, 3, namn[0].strip())
-        add_cell(sheet, i, 4, str(int(row["Mobil"])))
+        add_cell(sheet, i, 4, " " + str(int(row["Mobil"])))
 
         todays_emails.append(row[data_settings["email_column"]])
 
     foreman_found = False
-    for i, row in enumerate(foreman_rows, start=start_row + len(boatrows) + 4):
+    for i, row in enumerate(foreman_rows, start=next_row):
         add_cell(sheet, i, 6, row["Pass tid"])
         namn = row["Medlem (fullt namn)"].split("(")
         add_cell(sheet, i, 7, namn[0].strip())
@@ -235,13 +264,8 @@ def make_report(
 
     if not foreman_found:
         logger.warning(f"No foreman found for {date}!")
-        add_cell(sheet, start_row + len(boatrows) + 4, 6, "SAKNAS")
+        add_cell(sheet, next_row, 7, "SAKNAS", border=False)
         missing_foreman.append(date)
-
-    sheet.cell(1, 1, f"{header} {date}")
-    sheet.cell(
-        row=1, column=7, value=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    )
 
     # Save the workbook
     wb.save(output_filename)
@@ -343,7 +367,6 @@ def generate_reports(
     outdir: str,
     header: str,
     mapfile: str,
-    template: str,
 ) -> Dict[str, int]:
     # Iterate over the dates. Generate a schedule for each date that is in the future
     # and delete the file if it is in the past
@@ -368,7 +391,6 @@ def generate_reports(
                 output_filename=output_filename,
                 map_output_filename=map_output_filename,
                 email_output_filename=email_output_filename,
-                template=template,
                 data_settings=data_settings,
                 map_pptx=original_map_ppt,
             )
@@ -382,7 +404,9 @@ def generate_reports(
 
 def get_drivers(sheet_id):
     if sheet_id is None:
+        logger.warning("No driver schedule sheet ID provided.")
         return []
+    logger.info(f"Reading driver schedule from Google Sheet ID '{sheet_id[:5]}...'.")
     return get_google_sheet(sheet_id, get_sheet_titles(sheet_id)[0])
 
 
@@ -422,7 +446,6 @@ if __name__ == "__main__":
         outdir=args.outdir,
         header=args.header,
         mapfile=args.mapfile,
-        template=args.template,
     )
 
     find_balances(
