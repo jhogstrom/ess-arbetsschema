@@ -47,8 +47,6 @@ if __name__ == "__main__":
     with open(emailfile, encoding="utf-8") as f:
         recipients = [_.strip() for _ in f.readlines()]
 
-    recipients = ["jspr.hgstrm@gmail.com"]  # For testing only
-
     logger.info(f"Number of recipients: {len(recipients)}")
 
     with open(args.template, encoding="utf-8") as f:
