@@ -121,8 +121,14 @@ def gmail_send_message(
         message["To"] = ",".join(rec_to)
         message["Cc"] = ",".join(rec_cc) if rec_cc else ""
         message["Bcc"] = ",".join(rec_bcc) if rec_bcc else ""
-        # message["From"] = "varvschef@edsvikensss.se"
         message["Subject"] = subject
+
+        for _ in rec_to:
+            logger.info(f"Email To: {_}")
+        for _ in rec_cc or []:
+            logger.info(f"Email Cc: {_}")
+        for _ in rec_bcc or []:
+            logger.info(f"Email Bcc: {_}")
 
         # Add attachments if provided
         _add_attachments(message=message, attachments=attachments, logger=logger)
