@@ -120,31 +120,48 @@ def setup_logger(logger_name: str, level: str | None = None) -> logging.Logger:
     return logger
 
 
-def get_shape(slide, shape_name: str, logger: logging.Logger) -> Optional[Any]:
+def get_shape(parent, shape_name: str, logger: logging.Logger) -> Optional[Any]:
     """
     Get the shape by member id or member name by looking at
     the text in the shape. If the id or name is in the text,
-    return the shape.
+    return the shape. Searches recursively through shape groups.
 
     Args:
-        slide: Slide in pptx
-        member_id (str): Member id to search for
+        parent: Slide or shape group in pptx to search in
+        shape_name (str): Shape name or text content to search for
 
     Returns:
-        Shape: Shape, if found by member id or member name, otherwise None
+        Shape: Shape, if found by shape name or text content, otherwise None
     """
-    for shape in slide.shapes:
-        if shape.name == shape_name:
-            logger.debug(f"Found shape '{shape_name}'.")
-            return shape
-    for shape in slide.shapes:
-        if not hasattr(shape, "text"):
-            continue
-        if any(_ in shape.text.split() for _ in shape_name.split()):
-            logger.debug(f"Found shape {shape.name} matching {shape_name}")
-            return shape
-    logger.debug(f"Did not find shape with name '{shape_name}'")
-    return None
+
+    def _search_shapes(shapes_collection):
+        """Recursively search through shapes and shape groups."""
+        for shape in shapes_collection:
+            # First check by exact name match
+            if hasattr(shape, "name") and shape.name == shape_name:
+                return shape
+
+            if hasattr(shape, "text"):
+                if any(_ in shape.text.split() for _ in shape_name.split()):
+                    logger.debug(
+                        f"Found shape {shape.name} matching text '{shape_name}'"
+                    )
+                    return shape
+
+            # Check if this is a group shape and search recursively
+            if hasattr(shape, "shapes"):
+                result = _search_shapes(shape.shapes)
+                if result:
+                    logger.info(
+                        f"Found shape '{result.name}' in group shape '{shape.name}' for text '{shape_name}'"
+                    )
+                    return result
+        return None
+
+    result = _search_shapes(parent.shapes)
+    if not result:
+        logger.info(f"Did not find shape with name or text '{shape_name}'")
+    return result
 
 
 def make_shape_name(member_id: int) -> str:
