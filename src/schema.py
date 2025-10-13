@@ -227,6 +227,7 @@ def _make_excel_report(
         width: Optional[float] = None,
         header: bool = False,
         border: bool = True,
+        multiline: bool = False,
     ) -> Any:
         logger.debug(f"\tAdding cell {row}, {col}: {value}")
         cell = sheet.cell(row=row, column=col, value=value)
@@ -237,6 +238,10 @@ def _make_excel_report(
             sheet.column_dimensions[get_column_letter(col)].width = width
         if header:
             cell.font = Font(bold=True, size=13)
+        if multiline:
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+        else:
+            cell.alignment = Alignment(vertical="top")
         return cell
 
     # Add the header
@@ -258,7 +263,7 @@ def _make_excel_report(
     add_cell(sheet, 3, 5, "Plats", width=6, header=True)
     add_cell(sheet, 3, 6, "Båtmodell", width=20, header=True)
     add_cell(sheet, 3, 7, "Kommentar", width=30, header=True)
-    add_cell(sheet, 3, 8, "Inställningar", width=15, header=True)
+    add_cell(sheet, 3, 8, "Inställningar", width=20, header=True)
     # Specify the starting row and column
     next_row = 4
     for i, row in enumerate(boatrows, start=next_row):
@@ -294,8 +299,8 @@ def _make_excel_report(
             if not pd.isna(row["InställningDUSK2"])
             else None
         )
-        settings = ", ".join(_ for _ in [esk, dusk1, dusk2] if _ is not None)
-        add_cell(sheet, i, 8, settings)
+        settings = "\n".join(_ for _ in [esk, dusk1, dusk2] if _ is not None)
+        add_cell(sheet, i, 8, settings, multiline=True)
 
     next_row += 2
     add_cell(sheet, next_row, 1, "Arbetspass", header=True)
