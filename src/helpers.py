@@ -152,7 +152,7 @@ def get_shape(parent, shape_name: str, logger: logging.Logger) -> Optional[Any]:
             if hasattr(shape, "shapes"):
                 result = _search_shapes(shape.shapes)
                 if result:
-                    logger.info(
+                    logger.debug(
                         f"Found shape '{result.name}' in group shape '{shape.name}' for text '{shape_name}'"
                     )
                     return result
@@ -160,7 +160,7 @@ def get_shape(parent, shape_name: str, logger: logging.Logger) -> Optional[Any]:
 
     result = _search_shapes(parent.shapes)
     if not result:
-        logger.info(f"Did not find shape with name or text '{shape_name}'")
+        logger.debug(f"Did not find shape with name or text '{shape_name}'")
     return result
 
 
@@ -185,7 +185,7 @@ def color_boats(
                 logger.error(f"Could not set color on shape {shape.text}")
             text = shape.text.replace("\n", "--")
             if not terse:
-                logger.info(f"Member {member} ('{text}') {logmsg}")
+                logger.info(f"# {member} ('{text}') {logmsg}")
             shape.name = f"Member: {member}"
         else:
             if not terse:
