@@ -450,7 +450,8 @@ def add_boats_to_map(
         NAME_ONLY = "{member} {name}"  # noqa: F841
         SIZE_ONLY = "{member} {length:.1f}x{width:.1f}"  # noqa: F841
         FULL = "{member} {name}\n{length:.1f}x{width:.1f}"  # noqa: F841
-        caption = FULL.format(**expansions)
+        CAPTION = NAME_ONLY
+        caption = CAPTION.format(**expansions)
 
         set_shape_text(shape, caption)
     logger.info(f"Spots count: {counts[True]}")
