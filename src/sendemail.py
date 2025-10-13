@@ -1,5 +1,7 @@
 import argparse
+import glob
 import json
+from datetime import datetime
 
 from gmailapi import gmail_send_message
 from helpers import setup_logger
@@ -17,7 +19,7 @@ def parse_args():
     )
     parser.add_argument(
         "--template",
-        default="templates/email-template.html",
+        default="templates/email-template*.html",
         help="Path to the email template file",
     )
     parser.add_argument(
@@ -30,13 +32,74 @@ def parse_args():
     return parser.parse_args()
 
 
+seasons = {
+    "se": {
+        1: "vår",
+        2: "vår",
+        3: "vår",
+        4: "vår",
+        5: "vår",
+        6: "vår",
+        7: "vår",
+        8: "höst",
+        9: "höst",
+        10: "höst",
+        11: "höst",
+        12: "höst",
+    },
+    "en": {
+        1: "spring",
+        2: "spring",
+        3: "spring",
+        4: "spring",
+        5: "spring",
+        6: "spring",
+        7: "spring",
+        8: "autumn",
+        9: "autumn",
+        10: "autumn",
+        11: "autumn",
+        12: "autumn",
+    },
+}
+
+
+def get_email_template(template_pattern: str, date: str) -> str:
+    # First get a template for the specific date
+    templates = glob.glob(template_pattern.replace("*", "-" + date))
+    # Then try to get a season-based template
+    if not templates:
+        d = datetime.strptime(date, "%Y-%m-%d")
+        for lang in ["se", "en"]:
+            pattern = template_pattern.replace("*", f"-{seasons[lang][d.month]}")
+            templates = glob.glob(pattern)
+            if templates:
+                return templates[0]
+
+    # If none is found, use a fixed name
+    if not templates:
+        templates = glob.glob(template_pattern.replace("*", ""))
+
+    # TODO: Consider matching the pattern as is before failing
+    if not templates:
+        raise FileNotFoundError(f"No template file found matching {template_pattern}")
+
+    if len(templates) > 1:
+        raise ValueError(f"Multiple template files found matching {template_pattern}")
+    return templates[0]
+
+
 if __name__ == "__main__":
     args = parse_args()
     logger = setup_logger("mail")
 
     filedata = json.load(open("stage/generated_files.json", encoding="utf-8"))
 
-    date = sorted(list(filedata.get("files", {}).keys()))[0]
+    date = [
+        _
+        for _ in sorted(list(filedata.get("files", {}).keys()))
+        if _ >= datetime.now().strftime("%Y-%m-%d")
+    ][0]
 
     files = filedata.get("files", {}).get(date, [])
 
@@ -49,7 +112,10 @@ if __name__ == "__main__":
 
     logger.info(f"Number of recipients: {len(recipients)}")
 
-    with open(args.template, encoding="utf-8") as f:
+    template_file = get_email_template(args.template, date)
+    logger.info(f"Using email template file: {template_file}")
+
+    with open(template_file, encoding="utf-8") as f:
         content = f.read()
 
     replacements = (

@@ -50,7 +50,7 @@ schema: prereqs
 sendmail: prereqs
 	$(SENDMAILSCRIPT) \
 		--receiver $(EMAIL_RECEIVER) \
-		--template templates/email-template.html \
+		--template "templates/email-template*.html" \
 		--replacement "varvschef=$(VARVSCHEF)"
 
 upload: prereqs
