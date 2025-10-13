@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import openpyxl
 import pandas as pd
+import requests
 from dotenv import load_dotenv
 from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
@@ -110,8 +111,96 @@ def _get_rows(schedule: pd.DataFrame, date: str, schedule_name: str) -> list:
     )
 
 
+def _get_lat_long(location: str) -> tuple:
+    CACHE_FILE = "location_cache.json"
+    if os.path.exists(CACHE_FILE) and os.path.isfile(CACHE_FILE):
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            location_cache = json.load(f)
+    else:
+        location_cache = {}
+
+    if location in location_cache:
+        return tuple(location_cache[location])
+
+    api_key = os.getenv("OPENWEATHER_API_KEY")
+    if api_key is None:
+        raise ValueError("No OPENWEATHER_API_KEY environment variable set")
+
+    url = "https://api.openweathermap.org/geo/1.0/direct"
+    params = {
+        "q": location,
+        "limit": 1,
+        "appid": api_key,
+    }
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        raise ValueError("Failed to get location data")
+    data = response.json()
+    if len(data) == 0:
+        raise ValueError(f"Location '{location}' not found")
+    location_cache[location] = (data[0]["lat"], data[0]["lon"])
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(location_cache, f, indent=2, ensure_ascii=False)
+    return location_cache[location]
+
+
+def get_weather(date: str, location: str) -> Optional[dict]:
+    api_key = os.getenv("OPENWEATHER_API_KEY")
+    if api_key is None:
+        raise ValueError("No OPENWEATHER_API_KEY environment variable set")
+
+    lat, lon = _get_lat_long(location)
+    exclude = "current,minutely,hourly,alerts"
+
+    endpoint = "onecall"
+    # endpoint = "onecall/timemachine"
+    url = f"https://api.openweathermap.org/data/3.0/{endpoint}"
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "appid": api_key,
+        "exclude": exclude,
+        "units": "metric",
+        # "lang": "sv, se",
+    }
+    # icon: https://openweathermap.org/img/wn/10d@2x.png
+    if endpoint == "onecall/timemachine":
+        dt = int(
+            datetime.datetime.strptime(date, "%Y-%m-%d").replace(hour=12).timestamp()
+        )
+        params["dt"] = dt
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+
+    data = response.json()
+    for _ in data.get("daily", []):
+        if datetime.datetime.fromtimestamp(_["dt"]).strftime("%Y-%m-%d") == date:
+            return _
+
+    return None
+
+
+def parse_weather(data: Optional[dict]) -> Optional[dict]:
+    if data is None:
+        return None
+    temp = data.get("temp", {}).get("day")
+    return {
+        "temp": f"{int(round(temp))}C på dagen" if temp is not None else "-",
+        "description": f"{data.get('summary')} ({data.get('weather', [{}])[0].get('description')}).",
+        "icon": data.get("weather", [{}])[0].get("icon"),
+        "wind_speed": f"{int(round(data.get('wind_speed', 0)))} ({int(round(data.get('wind_gust', 0)))}) m/s",
+    }
+
+
 def _make_excel_report(
-    boatrows, work_rows, foreman_rows, filename: str, *, header: str, date: str
+    boatrows,
+    work_rows,
+    foreman_rows,
+    filename: str,
+    *,
+    header: str,
+    date: str,
+    drivers: List[str],
 ) -> None:
     # Create a new workbook and select the active sheet
     wb = openpyxl.Workbook()
@@ -235,6 +324,34 @@ def _make_excel_report(
     if len(foreman_rows) == 0:
         logger.warning(f"No foreman found for {date}!")
         add_cell(sheet, next_row, 7, "INGEN FÖRMAN", border=False)
+
+    next_row += len(foreman_rows) + 2
+    add_cell(sheet, next_row, 6, "Förare", header=True)
+    for i, row in enumerate(drivers, start=next_row + 1):
+        add_cell(sheet, i, 6, row[1])  # Name
+
+    if (
+        datetime.datetime.strptime(date, "%Y-%m-%d").date()
+        - datetime.datetime.today().date()
+    ).days < 3:
+        location = "Sollentuna,SE"
+        weather = parse_weather(get_weather(date, location))
+        if not weather:
+            logger.warning(f"No weather data found for {date} {location}")
+        else:
+            next_row += len(drivers) + 2
+            add_cell(sheet, next_row, 6, "Väderprognos", header=True)
+            add_cell(sheet, next_row, 7, location, header=True)
+            next_row += 1
+            add_cell(sheet, next_row, 6, "Väder", header=True)
+            add_cell(sheet, next_row, 7, weather["description"])
+            next_row += 1
+            add_cell(sheet, next_row, 6, "Temp", header=True)
+            add_cell(sheet, next_row, 7, weather["temp"])
+            next_row += 1
+            add_cell(sheet, next_row, 6, "Vind", header=True)
+            add_cell(sheet, next_row, 7, weather["wind_speed"])
+
     # Save the workbook
     wb.save(filename)
     logger.info(f"Report written to '{filename}'")
@@ -257,8 +374,11 @@ def _save_emails(
     todays_emails.extend(
         [_[email_column] for _ in foreman_rows if not pd.isna(_[email_column])]
     )
+    email_idx = drivers[0].index(email_column) if email_column in drivers[0] else -1
+    if email_idx == -1:
+        raise ValueError(f"Email column '{email_column}' not found in drivers sheet")
     # Add also all drivers for that date
-    todays_emails.extend(_[2] for _ in drivers[1:] if _[0] == date)
+    todays_emails.extend(_[email_idx] for _ in drivers[1:] if _[0] == date)
     # Write the email list to a file
     with open(filename, "w", encoding="utf-8") as f:
         for e in sorted(set(todays_emails)):
@@ -306,7 +426,13 @@ def make_report(
     foreman_rows = _get_rows(schedule, date, data_settings["foreman_schedule"])
 
     _make_excel_report(
-        boatrows, work_rows, foreman_rows, output_filename, header=header, date=date
+        boatrows,
+        work_rows,
+        foreman_rows,
+        output_filename,
+        header=header,
+        date=date,
+        drivers=[_ for _ in drivers if _[0] == date],
     )
     _save_emails(
         boatrows,
