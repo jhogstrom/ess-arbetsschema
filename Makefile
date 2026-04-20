@@ -4,11 +4,13 @@ PYTHON?=python
 ifeq ($(strip $(VIRTUAL_ENV)),)
 VENV=source .venv/Scripts/activate;
 endif
+DRYRUN?=1
+QUALIFIER=$(if $(DRYRUN),echo)
 PYTHON:=$(VENV) $(PYTHON)
 KARTVERKTYG=$(PYTHON) src/platsplanering.py
 SCHEMAVERKTYG=$(PYTHON) src/schema.py
 UPLOADSCRIPT=$(PYTHON) src/uploadfiles.py
-SENDMAILSCRIPT=$(PYTHON) src/sendemail.py
+SENDMAILSCRIPT=$(QUALIFIER) $(PYTHON) src/sendemail.py
 STAGE=stage
 CLUBNAME?=ESS
 UV=$(if $(CI),,uv)
@@ -41,6 +43,8 @@ schema: prereqs
 		--outdir $(STAGE) \
 		--header "Schema $(CLUBNAME)" \
 		--driversheetid $(DRIVERSCHEDULE) \
+		--openweather_apikey "$(OPENWEATHER_API_KEY)" \
+		--location "$(LOCATION)" \
 		--mapfile "varvskarta*.pptx"
 
 # emails: SHEET_ID=$(EMAIL_SHEET_ID)

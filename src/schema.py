@@ -63,6 +63,18 @@ def parseargs():
         default=os.getenv("DRIVERSCHEDULE"),
         help="Google Sheet ID to read the driver schedule from",
     )
+    parser.add_argument(
+        "--openweather_apikey",
+        metavar="<key>",
+        default=os.getenv("OPENWEATHER_API_KEY"),
+        help="OpenWeather API key",
+    )
+    parser.add_argument(
+        "--location",
+        metavar="<location>",
+        default=os.getenv("LOCATION"),
+        help="Location for weather data",
+    )
     return parser.parse_args()
 
 
@@ -111,7 +123,7 @@ def _get_rows(schedule: pd.DataFrame, date: str, schedule_name: str) -> list:
     )
 
 
-def _get_lat_long(location: str) -> tuple:
+def _get_lat_long(location: str, api_key: str) -> tuple:
     CACHE_FILE = "location_cache.json"
     if os.path.exists(CACHE_FILE) and os.path.isfile(CACHE_FILE):
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
@@ -122,10 +134,6 @@ def _get_lat_long(location: str) -> tuple:
     if location in location_cache:
         return tuple(location_cache[location])
 
-    api_key = os.getenv("OPENWEATHER_API_KEY")
-    if api_key is None:
-        raise ValueError("No OPENWEATHER_API_KEY environment variable set")
-
     url = "https://api.openweathermap.org/geo/1.0/direct"
     params = {
         "q": location,
@@ -133,8 +141,7 @@ def _get_lat_long(location: str) -> tuple:
         "appid": api_key,
     }
     response = requests.get(url, params=params)
-    if response.status_code != 200:
-        raise ValueError("Failed to get location data")
+    response.raise_for_status()
     data = response.json()
     if len(data) == 0:
         raise ValueError(f"Location '{location}' not found")
@@ -144,12 +151,11 @@ def _get_lat_long(location: str) -> tuple:
     return location_cache[location]
 
 
-def get_weather(date: str, location: str) -> Optional[dict]:
-    api_key = os.getenv("OPENWEATHER_API_KEY")
+def get_weather(date: str, location: str, api_key: str) -> Optional[dict]:
     if api_key is None:
-        raise ValueError("No OPENWEATHER_API_KEY environment variable set")
+        return None
 
-    lat, lon = _get_lat_long(location)
+    lat, lon = _get_lat_long(location, api_key)
     exclude = "current,minutely,hourly,alerts"
 
     endpoint = "onecall"
@@ -201,6 +207,8 @@ def _make_excel_report(
     header: str,
     date: str,
     drivers: List[str],
+    openweather_apikey: Optional[str] = None,
+    location: Optional[str] = None,
 ) -> None:
     # Create a new workbook and select the active sheet
     wb = openpyxl.Workbook()
@@ -336,11 +344,15 @@ def _make_excel_report(
         add_cell(sheet, i, 6, row[1])  # Name
 
     if (
-        datetime.datetime.strptime(date, "%Y-%m-%d").date()
-        - datetime.datetime.today().date()
-    ).days < 3:
-        location = "Sollentuna,SE"
-        weather = parse_weather(get_weather(date, location))
+        openweather_apikey is not None
+        and location is not None
+        and (
+            datetime.datetime.strptime(date, "%Y-%m-%d").date()
+            - datetime.datetime.today().date()
+        ).days
+        < 3
+    ):
+        weather = parse_weather(get_weather(date, location, api_key=openweather_apikey))
         if not weather:
             logger.warning(f"No weather data found for {date} {location}")
         else:
@@ -423,6 +435,8 @@ def make_report(
     header: str,
     map_pptx: Optional[presentation.Presentation] = None,
     data_settings: dict,
+    openweather_apikey: Optional[str] = None,
+    location: Optional[str] = None,
 ) -> int:
     logger.info(f"Generating report for {date}")
 
@@ -438,6 +452,8 @@ def make_report(
         header=header,
         date=date,
         drivers=[_ for _ in drivers if _[0] == date],
+        openweather_apikey=openweather_apikey,
+        location=location,
     )
     _save_emails(
         boatrows,
@@ -522,6 +538,8 @@ def generate_reports(
     outdir: str,
     header: str,
     mapfile: str,
+    openweather_apikey: Optional[str] = None,
+    location: Optional[str] = None,
 ) -> Dict[str, int]:
     # Iterate over the dates. Generate a schedule for each date that is in the future
     # and delete the file if it is in the past
@@ -548,6 +566,8 @@ def generate_reports(
                 email_output_filename=email_output_filename,
                 data_settings=data_settings,
                 map_pptx=original_map_ppt,
+                openweather_apikey=openweather_apikey,
+                location=location,
             )
         else:
             ensure_delete(output_filename)
@@ -567,16 +587,22 @@ def get_drivers(sheet_id):
 
 if __name__ == "__main__":
     args = parseargs()
-    logger = setup_logger("sched", "INFO")
+    logger = setup_logger("sched", os.getenv("DEBUG_LEVEL", "DEBUG"))
     fh = FileHelper(logger)
 
     schedule_filename = fh.make_filename(args.file, dirs=["report", ".reports/reports"])
     logger.info(f"Reading schedule file '{schedule_filename}'")
     schedule = pd.read_excel(schedule_filename)
+
+    # # print 10 first rows and columns of the schedule for debugging
+    # logger.debug(f"Schedule columns: {schedule.columns.tolist()}")
+    # logger.debug(f"First 10 rows of the schedule:\n{schedule.head(10)}")
+
+    activity = "sjösättning" if datetime.datetime.now().month <= 7 else "torrsättning"
     current_year = datetime.datetime.now().year
-    BOAT_SCHEDULE = f"Torrsättning {current_year}"
-    WORK_SCHEDULE = f"Arbetspass torrsättning {current_year}"
-    FOREMAN_SCHEDULE = f"Förmanspass till torrsättning {current_year} (för styrelsen)"
+    BOAT_SCHEDULE = f"{activity.capitalize()} {current_year}"
+    WORK_SCHEDULE = f"Arbetspass {activity} {current_year}"
+    FOREMAN_SCHEDULE = f"Förmanspass till {activity} {current_year} (för styrelsen)"
 
     data_settings = {
         "boat_schedule": BOAT_SCHEDULE,
@@ -601,6 +627,8 @@ if __name__ == "__main__":
         outdir=args.outdir,
         header=args.header,
         mapfile=args.mapfile,
+        openweather_apikey=args.openweather_apikey,
+        location=args.location,
     )
 
     find_balances(
