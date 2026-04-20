@@ -17,6 +17,7 @@ Example:
 import os
 from typing import List
 
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -35,7 +36,9 @@ SCOPES = [
 TOKEN_CACHE_FILE = "token.json"
 CREDENTIALS_FILE = "google-credentials.json"
 
-logger = setup_logger("google")
+load_dotenv()
+
+logger = setup_logger("google", os.getenv("DEBUG_LEVEL", "DEBUG"))
 
 __all__ = [
     "get_google_sheet",

@@ -1,10 +1,15 @@
 import argparse
 import glob
 import json
+import os
 from datetime import datetime
+
+from dotenv import load_dotenv
 
 from gmailapi import gmail_send_message
 from helpers import setup_logger
+
+load_dotenv()
 
 MAILFILE_EXT = ".email.txt"
 
@@ -91,7 +96,7 @@ def get_email_template(template_pattern: str, date: str) -> str:
 
 if __name__ == "__main__":
     args = parse_args()
-    logger = setup_logger("mail")
+    logger = setup_logger("mail", os.getenv("DEBUG_LEVEL", "DEBUG"))
 
     filedata = json.load(open("stage/generated_files.json", encoding="utf-8"))
 

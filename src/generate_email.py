@@ -1,7 +1,9 @@
 import argparse
+import os
 from pprint import pprint
 
 import pyperclip
+from dotenv import load_dotenv
 
 from googleapi import get_google_sheet, get_sheet_titles
 from platsplanering import (
@@ -11,6 +13,8 @@ from platsplanering import (
     read_members,
     setup_logger,
 )
+
+load_dotenv()
 
 
 def parseargs():
@@ -28,7 +32,7 @@ def parseargs():
 
 
 args = parseargs()
-logger = setup_logger("spots", "INFO")
+logger = setup_logger("spots", os.getenv("DEBUG_LEVEL", "DEBUG"))
 fh = FileHelper(logger)
 members_source = fh.make_filename(args.members, dirs=["boatinfo"])
 

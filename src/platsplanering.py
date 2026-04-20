@@ -9,6 +9,7 @@ from typing import Any, Dict, Hashable, List, Optional
 
 import pandas as pd
 import pyperclip
+from dotenv import load_dotenv
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
@@ -22,6 +23,9 @@ FILL_COLOR = RGBColor(214, 245, 214)
 FILL_COLOR_NOSPOT = RGBColor(255, 230, 230)
 FILL_COLOR_ON_LAND = RGBColor(230, 230, 255)
 FILL_COLOR_MEMBER_LEFT = RGBColor(255, 153, 255)
+
+
+load_dotenv()
 
 
 def define_colors(filename: Optional[str]) -> Dict[str, RGBColor]:
@@ -624,7 +628,7 @@ def send_reminders(
         logger.info(f"Email addresses: {emails}")
 
 
-logger = setup_logger("spots", "INFO")
+logger = setup_logger("spots", os.getenv("DEBUG_LEVEL", "DEBUG"))
 if __name__ == "__main__":
     args = parseargs()
     colors = define_colors("templates/colors.json")
