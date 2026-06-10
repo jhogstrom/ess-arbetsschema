@@ -4,8 +4,8 @@ PYTHON?=python
 ifeq ($(strip $(VIRTUAL_ENV)),)
 VENV=source .venv/Scripts/activate;
 endif
-DRYRUN?=1
-QUALIFIER=$(if $(DRYRUN),echo)
+# DRYRUN?=1
+QUALIFIER=$(if $(DRYRUN),echo NOT RUNNING COMMAND:,)
 PYTHON:=$(VENV) $(PYTHON)
 KARTVERKTYG=$(PYTHON) src/platsplanering.py
 SCHEMAVERKTYG=$(PYTHON) src/schema.py
